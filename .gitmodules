@@ -1,0 +1,3 @@
+[submodule "pacj_ws/src/OrbbecSDK_ROS2"]
+	path = pacj_ws/src/OrbbecSDK_ROS2
+	url = https://github.com/orbbec/OrbbecSDK_ROS2.git

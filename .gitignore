@@ -1,3 +1,8 @@
+# ROS2 workspace
+/pacj_ws/build
+/pacj_ws/install
+/pacj_ws/log
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]
