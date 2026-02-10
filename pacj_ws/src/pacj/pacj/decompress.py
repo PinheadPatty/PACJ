@@ -12,24 +12,49 @@ class ImageDecompressor(Node):
         super().__init__('image_decompressor')
         self.bridge = CvBridge()
 
-        self.color_subscription = self.create_subscription(
+        # Drone Subscriptions & Publishers
+        self.drone_color_subscription = self.create_subscription(
             CompressedImage,
-            '/camera/color/image_raw/compressed', 
-            self.color_listener_callback,
+            '/drone/color/image_raw/compressed', 
+            self.drone_color_listener_callback,
             qos_profile=qos_profile_sensor_data)
-        self.depth_subscription = self.create_subscription(
+        self.drone_depth_subscription = self.create_subscription(
             CompressedImage,
-            '/camera/depth/image_raw/compressedDepth', 
-            self.depth_listener_callback, 
+            '/drone/depth/image_raw/compressedDepth', 
+            self.drone_depth_listener_callback, 
             qos_profile=qos_profile_sensor_data)        
         
-        
-        self.color_publisher = self.create_publisher(Image, '/decompressed_color', qos_profile=qos_profile_sensor_data)
-        self.depth_publisher = self.create_publisher(Image, '/decompressed_depth', qos_profile=qos_profile_sensor_data)
+        self.drone_color_publisher = self.create_publisher(Image, '/drone/decompressed_color', qos_profile=qos_profile_sensor_data)
+        self.drone_depth_publisher = self.create_publisher(Image, '/drone/decompressed_depth', qos_profile=qos_profile_sensor_data)
 
+        # Rover Subscriptions & Publishers
+        self.rover_color_subscription = self.create_subscription(
+            CompressedImage,
+            '/rover/color/image_raw/compressed', 
+            self.rover_color_listener_callback,
+            qos_profile=qos_profile_sensor_data)
+        self.rover_depth_subscription = self.create_subscription(
+            CompressedImage,
+            '/rover/depth/image_raw/compressedDepth', 
+            self.rover_depth_listener_callback, 
+            qos_profile=qos_profile_sensor_data)        
         
-        
-    def color_listener_callback(self, msg):
+        self.rover_color_publisher = self.create_publisher(Image, '/rover/decompressed_color', qos_profile=qos_profile_sensor_data)
+        self.rover_depth_publisher = self.create_publisher(Image, '/rover/decompressed_depth', qos_profile=qos_profile_sensor_data)
+
+    def drone_color_listener_callback(self, msg):
+        self.decompress_color(msg, self.drone_color_publisher)
+
+    def rover_color_listener_callback(self, msg):
+        self.decompress_color(msg, self.rover_color_publisher)
+
+    def drone_depth_listener_callback(self, msg):
+        self.decompress_depth(msg, self.drone_depth_publisher)
+
+    def rover_depth_listener_callback(self, msg):
+        self.decompress_depth(msg, self.rover_depth_publisher)
+
+    def decompress_color(self, msg, publisher):
         try:
             cv_image = self.bridge.compressed_imgmsg_to_cv2(msg, desired_encoding="bgr8")
             if cv_image is None:
@@ -41,9 +66,9 @@ class ImageDecompressor(Node):
 
         raw_image_msg = self.bridge.cv2_to_imgmsg(cv_image, encoding="bgr8")
         raw_image_msg.header = msg.header
-        self.color_publisher.publish(raw_image_msg)
+        publisher.publish(raw_image_msg)
 
-    def depth_listener_callback(self, msg):
+    def decompress_depth(self, msg, publisher):
         try:
             raw_data = np.frombuffer(msg.data, np.uint8)
 
@@ -62,7 +87,7 @@ class ImageDecompressor(Node):
 
         raw_image_msg = self.bridge.cv2_to_imgmsg(cv_image, encoding="passthrough")
         raw_image_msg.header = msg.header
-        self.depth_publisher.publish(raw_image_msg)
+        publisher.publish(raw_image_msg)
 
 def main(args=None):
     rclpy.init(args=args)
