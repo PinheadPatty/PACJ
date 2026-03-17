@@ -23,10 +23,20 @@ class OffboardControl(Node):
         self.set_mode_client = self.create_client(SetMode, '/mavros/set_mode')
 
         self.current_state = State()
+        self.mode_req_time = self.get_clock().now()
+        self.arm_req_time = self.get_clock().now()
+        
         self.timer = self.create_timer(0.05, self.timer_callback) # 20Hz
         self.start_time = self.get_clock().now()
+        self.get_logger().info("Offboard control node initialized. Waiting for connection...")
 
     def state_cb(self, msg):
+        if not self.current_state.connected and msg.connected:
+            self.get_logger().info("Connected to MAVROS!")
+        if self.current_state.mode != msg.mode:
+            self.get_logger().info(f"Mode changed to {msg.mode}")
+        if not self.current_state.armed and msg.armed:
+            self.get_logger().info("Vehicle armed!")
         self.current_state = msg
 
     def timer_callback(self):
@@ -46,19 +56,47 @@ class OffboardControl(Node):
         now = self.get_clock().now()
         if (now - self.start_time).nanoseconds > 2e9:
             if self.current_state.mode != "OFFBOARD":
-                self.set_offboard_mode()
+                if (now - self.mode_req_time).nanoseconds > 1e9:  # Limit requests to 1Hz
+                    self.set_offboard_mode()
+                    self.mode_req_time = now
             elif not self.current_state.armed:
-                self.arm_vehicle()
+                if (now - self.arm_req_time).nanoseconds > 1e9:  # Limit requests to 1Hz
+                    self.arm_vehicle()
+                    self.arm_req_time = now
 
     def set_offboard_mode(self):
+        if not self.set_mode_client.wait_for_service(timeout_sec=1.0):
+            self.get_logger().info('/mavros/set_mode service not available')
+            return
+        self.get_logger().info('Requesting OFFBOARD mode...')
         req = SetMode.Request()
         req.custom_mode = "OFFBOARD"
-        self.set_mode_client.call_async(req)
+        future = self.set_mode_client.call_async(req)
+        future.add_done_callback(self.mode_cb)
+
+    def mode_cb(self, future):
+        try:
+            response = future.result()
+            self.get_logger().info(f'Switch mode result: {response.mode_sent}')
+        except Exception as e:
+            self.get_logger().error(f'Service call failed: {e}')
 
     def arm_vehicle(self):
+        if not self.arming_client.wait_for_service(timeout_sec=1.0):
+            self.get_logger().info('/mavros/cmd/arming service not available')
+            return
+        self.get_logger().info('Requesting Arm...')
         req = CommandBool.Request()
         req.value = True
-        self.arming_client.call_async(req)
+        future = self.arming_client.call_async(req)
+        future.add_done_callback(self.arm_cb)
+
+    def arm_cb(self, future):
+        try:
+            response = future.result()
+            self.get_logger().info(f'Arming result: {response.success}')
+        except Exception as e:
+            self.get_logger().error(f'Service call failed: {e}')
 
 def main(args=None):
     rclpy.init(args=args)
