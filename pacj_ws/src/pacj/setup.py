@@ -30,6 +30,7 @@ setup(
     entry_points={
         'console_scripts': [
             'decompressor = pacj.decompress:main',
+            'rover_driver = rover_teleop.rover_driver:main',
         ],
     },
 )
