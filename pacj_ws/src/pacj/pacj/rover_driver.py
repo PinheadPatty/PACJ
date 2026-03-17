@@ -20,11 +20,12 @@ class RoverDriver(Node):
         # --- Settings for "Slow" Movement ---
         self.SPEED_LIMIT = 50   # Physical cap (~11 RPM)
         self.WHEEL_SEP   = 0.14 # Meters between wheels
-        self.SCALE       = 40.0 # Sensitivity (Keyboard input * 40)
+        self.SCALE       = 100.0 # Sensitivity (Keyboard input * 40)
 
         # --- SDK Initialization ---
         self.port_handler = PortHandler(self.DEVICE_NAME)
         self.packet_handler = PacketHandler(2.0)
+        self.groupSyncWrite = GroupSyncWrite(self.port_handler, self.packet_handler, self.ADDR_GOAL_VELOCITY, 4)
         
         if not self.port_handler.openPort():
             self.get_logger().error("Could not open port! Try: sudo chmod 666 /dev/ttyUSB0")
@@ -33,12 +34,21 @@ class RoverDriver(Node):
 
         # --- One-Time Hardware Setup ---
         for dxl_id in self.IDS:
-            # Must disable torque to change EEPROM settings (Mode/Limits)
+            print(f"Configuring Motor ID: {dxl_id}")
+            
+            # 1. Disable torque to allow setting changes
             self.packet_handler.write1ByteTxRx(self.port_handler, dxl_id, self.ADDR_TORQUE_ENABLE, 0)
-            self.packet_handler.write4ByteTxRx(self.port_handler, dxl_id, self.ADDR_VELOCITY_LIMIT, self.SPEED_LIMIT)
+            
+            # 2. UNLOCK: Set Velocity Limit
+            # This fixes the "stiff but not spinning" issue
+            self.packet_handler.write4ByteTxRx(self.port_handler, dxl_id, self.ADDR_VELOCITY_LIMIT, 200)
+            
+            # 3. Force Velocity Mode (1)
             self.packet_handler.write1ByteTxRx(self.port_handler, dxl_id, self.ADDR_OPERATING_MODE, self.VELOCITY_MODE)
-            # Re-enable Torque
+            
+            # 4. Re-enable Torque (This makes them stiff/ready)
             self.packet_handler.write1ByteTxRx(self.port_handler, dxl_id, self.ADDR_TORQUE_ENABLE, 1)
+
 
         self.subscription = self.create_subscription(Twist, 'cmd_vel', self.cmd_vel_callback, 10)
         self.get_logger().info("Rover Driver Online. Use teleop_twist_keyboard to drive.")
@@ -47,10 +57,25 @@ class RoverDriver(Node):
         # Differential Drive Math
         left_vel  = (msg.linear.x - (msg.angular.z * self.WHEEL_SEP / 2.0)) * self.SCALE
         right_vel = (msg.linear.x + (msg.angular.z * self.WHEEL_SEP / 2.0)) * self.SCALE
+        print(left_vel, right_vel)
 
-        # Send Commands (Inverting right motor 2 for mirrored mounting)
-        self.packet_handler.write4ByteTxOnly(self.port_handler, 1, self.ADDR_GOAL_VELOCITY, int(left_vel))
-        self.packet_handler.write4ByteTxOnly(self.port_handler, 2, self.ADDR_GOAL_VELOCITY, int(-right_vel))
+        # 1. Clear any data from the previous command
+        self.groupSyncWrite.clearParam()
+
+        # 2. Convert to integers and then to 4-byte little-endian format
+        # Note: Using -right_vel for the mirrored mounting
+        param_left  = [DXL_LOBYTE(DXL_LOWORD(int(left_vel))), DXL_HIBYTE(DXL_LOWORD(int(left_vel))), 
+                    DXL_LOBYTE(DXL_HIWORD(int(left_vel))), DXL_HIBYTE(DXL_HIWORD(int(left_vel)))]
+                    
+        param_right = [DXL_LOBYTE(DXL_LOWORD(int(-right_vel))), DXL_HIBYTE(DXL_LOWORD(int(-right_vel))), 
+                    DXL_LOBYTE(DXL_HIWORD(int(-right_vel))), DXL_HIBYTE(DXL_HIWORD(int(-right_vel)))]
+
+        # 3. Add motors to the sync group
+        self.groupSyncWrite.addParam(1, param_left)
+        self.groupSyncWrite.addParam(2, param_right)
+
+        # 4. Send the single "Sync" packet to the bus
+        self.groupSyncWrite.txPacket()
 
 def main():
     rclpy.init()

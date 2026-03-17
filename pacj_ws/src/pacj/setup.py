@@ -13,7 +13,7 @@ setup(
             ['resource/' + package_name]),
         ('share/' + package_name, ['package.xml']),
         (os.path.join('share', package_name, 'config'), glob('config/*.yaml')),
-	(os.path.join('share', package_name, 'description'), glob('description/*.xacro')),
+	    (os.path.join('share', package_name, 'description'), glob('description/*.xacro')),
         (os.path.join('share', package_name, 'launch'), glob('launch/*.launch.py')),
     ],
     install_requires=['setuptools'],
@@ -30,7 +30,7 @@ setup(
     entry_points={
         'console_scripts': [
             'decompressor = pacj.decompress:main',
-            'rover_driver = rover_teleop.rover_driver:main',
+            'rover_driver = pacj.rover_driver:main',
         ],
     },
 )
