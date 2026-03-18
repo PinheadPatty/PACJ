@@ -45,4 +45,3 @@ def generate_launch_description():
         battery_node,
         rover_driver_node
     ])
-
