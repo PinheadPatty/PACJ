@@ -54,6 +54,5 @@ def generate_launch_description():
             period=5.0,
             actions=[rover_camera_node]
         ),
-        rover_camera_node,
         # battery_node,
     ])
