@@ -22,8 +22,8 @@ class RoverDriver(Node):
         
         # Coupling Settings (ID 3)
         self.COUPLE_ID    = 3
-        self.POS_OPEN     = 512     
-        self.POS_CLOSED   = 1800    
+        self.POS_OPEN     = 2570     
+        self.POS_CLOSED   = 3500    
         self.COUPLE_SPEED = 30      # Set once at startup (Steady crawl)
         self.SAFE_PWM     = 250     # Power cap to protect gears
         
@@ -78,6 +78,8 @@ class RoverDriver(Node):
             # Set the speed limit ONCE while torque is off
             self.packet_handler.write4ByteTxRx(self.port_handler, self.COUPLE_ID, self.ADDR_PROF_VELOCITY, self.COUPLE_SPEED)
             self.packet_handler.write1ByteTxRx(self.port_handler, self.COUPLE_ID, self.ADDR_TORQUE_ENABLE, 1)
+            # Error Code 0x20 is Overload. If triggered, the LED will blink and torque will drop.
+            self.packet_handler.write1ByteTxRx(self.port_handler, self.COUPLE_ID, 48, 0x20)
 
     def get_4byte_param(self, value):
         val = int(value)
@@ -96,8 +98,34 @@ class RoverDriver(Node):
 
     # TO OPEN: ros2 topic pub --once /coupling std_msgs/String "data: 'open'"
     # TO CLOSE: ros2 topic pub --once /coupling std_msgs/String "data: 'close'"
+    # TO RELAX:  ros2 topic pub --once /coupling std_msgs/String "data: 'relax'"
     def coupling_callback(self, msg):
+        import time
         command = msg.data.lower().strip()
+
+        # --- 1. CALIBRATION MODE ('relax') ---
+        # This unlocks the motor and prints the position for 30 seconds
+        if command == 'relax':
+            with self.comm_lock:
+                self.packet_handler.write1ByteTxRx(self.port_handler, self.COUPLE_ID, self.ADDR_TORQUE_ENABLE, 0)
+            
+            self.get_logger().info("!!! CALIBRATION START: Motor Unlocked for 30s !!!")
+            
+            for i in range(30):
+                with self.comm_lock:
+                    pos, res, err = self.packet_handler.read4ByteTxRx(
+                        self.port_handler, self.COUPLE_ID, 132 # Present Position
+                    )
+                if res == 0: # COMM_SUCCESS
+                    self.get_logger().info(f"Step {i+1}/30 - Position: {pos}")
+                else:
+                    self.get_logger().error("Read Failed! Check connection.")
+                time.sleep(1.0) # Poll once per second
+                
+            self.get_logger().info("!!! CALIBRATION ENDED. Send 'open' or 'close' to re-engage. !!!")
+            return
+
+        # --- 2. MOVEMENT COMMANDS ('open' / 'close') ---
         target_pos = self.POS_OPEN if command == 'open' else self.POS_CLOSED if command == 'close' else None
 
         if target_pos is None:
@@ -105,7 +133,10 @@ class RoverDriver(Node):
             return
 
         with self.comm_lock:
-            # We use TxRx here to ensure the latch actually receives the command
+            # SAFETY: Ensure torque is ON before moving (re-engages after relax)
+            self.packet_handler.write1ByteTxRx(self.port_handler, self.COUPLE_ID, self.ADDR_TORQUE_ENABLE, 1)
+            
+            # Send the goal position
             res, err = self.packet_handler.write4ByteTxRx(
                 self.port_handler, 
                 self.COUPLE_ID, 
@@ -113,12 +144,12 @@ class RoverDriver(Node):
                 target_pos
             )
             
-            if res != COMM_SUCCESS:
-                self.get_logger().error(f"Coupler COMM Failed: {self.packet_handler.getTxRxResult(res)}")
+            if res != 0: # Not COMM_SUCCESS
+                self.get_logger().error(f"Coupler Move FAILED: {self.packet_handler.getTxRxResult(res)}")
             elif err != 0:
-                self.get_logger().error(f"Coupler HW Error: {self.packet_handler.getRxPacketError(err)}")
+                self.get_logger().error(f"Coupler Hardware Error: {self.packet_handler.getRxPacketError(err)}")
             else:
-                self.get_logger().info(f"Coupler successfully moved to {command} ({target_pos})")
+                self.get_logger().info(f"Coupler moving to {command.upper()} ({target_pos})")
    
     # TO CHECK: ros2 topic echo /battery_status --once
     def battery_monitor_callback(self):
