@@ -79,19 +79,19 @@ class DroneDriver(Node):
         # Auto-arm and switch to OFFBOARD mode 
         # Handshake: Only try to arm/switch mode after 1 second of streaming setpoints
         if (now - self.start_time).nanoseconds > 1e9:
-            if self.arming_state != VehicleStatus.ARMING_STATE_ARMED:
-                if (now - self.arm_req_time).nanoseconds > 1e9:  # Limit requests to 1Hz
-                    # Command PX4 to arm
-                    self.publish_vehicle_command(
-                        VehicleCommand.VEHICLE_CMD_COMPONENT_ARM_DISARM, param1=1.0) # 1.0=Arm
-                    self.arm_req_time = now
-                    
-            elif self.nav_state != VehicleStatus.NAVIGATION_STATE_OFFBOARD:
+            if self.nav_state != VehicleStatus.NAVIGATION_STATE_OFFBOARD:
                 if (now - self.mode_req_time).nanoseconds > 1e9:  # Limit requests to 1Hz
                     # Command PX4 to switch to Offboard mode
                     self.publish_vehicle_command(
                         VehicleCommand.VEHICLE_CMD_DO_SET_MODE, param1=1.0, param2=6.0) # 1.0=Custom mode, 6.0=OFFBOARD
                     self.mode_req_time = now
+                    
+            elif self.arming_state != VehicleStatus.ARMING_STATE_ARMED:
+                if (now - self.arm_req_time).nanoseconds > 1e9:  # Limit requests to 1Hz
+                    # Command PX4 to arm
+                    self.publish_vehicle_command(
+                        VehicleCommand.VEHICLE_CMD_COMPONENT_ARM_DISARM, param1=1.0) # 1.0=Arm
+                    self.arm_req_time = now
 
     def publish_offboard_control_mode(self):
         msg = OffboardControlMode()
