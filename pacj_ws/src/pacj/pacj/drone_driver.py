@@ -101,18 +101,22 @@ class DroneDriver(Node):
         msg = TrajectorySetpoint()
         
         # cmd_vel is in Body Frame (FLU).
-        # To prove that velocity commands work without complex quaternion math,
-        # we will directly map "Forward" to "North" and "Left" to "West".
-        # This means pressing 'i' will always make the drone fly North globally!
+        # We need to convert it to Local Frame (NED).
+        # FLU: X = Forward, Y = Left, Z = Up
+        # NED: X = North, Y = East, Z = Down
         
         # 1. Convert FLU to Body-NED (Forward, Right, Down)
         body_forward = float(self.current_twist.linear.x)
         body_right = -float(self.current_twist.linear.y)
         body_down = -float(self.current_twist.linear.z)
         
-        msg.velocity[0] = body_forward  # North
-        msg.velocity[1] = body_right    # East
-        msg.velocity[2] = body_down     # Down
+        # 2. Rotate Body-NED to Local-NED using current yaw
+        cos_yaw = math.cos(self.current_yaw)
+        sin_yaw = math.sin(self.current_yaw)
+        
+        msg.velocity[0] = body_forward * cos_yaw - body_right * sin_yaw  # North
+        msg.velocity[1] = body_forward * sin_yaw + body_right * cos_yaw  # East
+        msg.velocity[2] = body_down                                      # Down
         
         # Yaw rate (Z axis rotation). 
         # ROS is counter-clockwise positive (Up), PX4 is clockwise positive (Down)
