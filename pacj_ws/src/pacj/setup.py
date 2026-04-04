@@ -29,6 +29,7 @@ setup(
         'console_scripts': [
             'decompressor = pacj.decompress:main',
             'rover_driver = pacj.rover_driver:main',
+            'drone_driver = pacj.drone_driver:main',
             'battery = pacj.battery:main',
         ],
     },

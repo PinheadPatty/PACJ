@@ -24,6 +24,14 @@ def generate_launch_description():
         }.items()
     )
 
+    drone_driver = Node(
+        package='pacj',
+        executable='drone_driver',
+        name='drone_driver',
+        output='screen'
+    )
+
     return LaunchDescription([
         drone_camera,
+        drone_driver,
     ])

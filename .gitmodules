@@ -1,3 +1,6 @@
 [submodule "pacj_ws/src/OrbbecSDK_ROS2"]
 	path = pacj_ws/src/OrbbecSDK_ROS2
 	url = https://github.com/orbbec/OrbbecSDK_ROS2.git
+[submodule "pacj_ws/src/px4_msgs"]
+	path = pacj_ws/src/px4_msgs
+	url = https://github.com/PX4/px4_msgs.git
