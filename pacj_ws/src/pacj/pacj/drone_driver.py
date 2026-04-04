@@ -79,6 +79,7 @@ class DroneDriver(Node):
         # Auto-arm and switch to OFFBOARD mode 
         # Handshake: Only try to arm/switch mode after 1 second of streaming setpoints
         if (now - self.start_time).nanoseconds > 1e9:
+            # We must be in offboard mode before arming
             if self.nav_state != VehicleStatus.NAVIGATION_STATE_OFFBOARD:
                 if (now - self.mode_req_time).nanoseconds > 1e9:  # Limit requests to 1Hz
                     self.get_logger().info('Requesting OFFBOARD mode...')
@@ -87,6 +88,7 @@ class DroneDriver(Node):
                         VehicleCommand.VEHICLE_CMD_DO_SET_MODE, param1=1.0, param2=6.0) # 1.0=Custom mode, 6.0=OFFBOARD
                     self.mode_req_time = now
                     
+            # Once in offboard mode, we can arm
             elif self.arming_state != VehicleStatus.ARMING_STATE_ARMED:
                 if (now - self.arm_req_time).nanoseconds > 1e9:  # Limit requests to 1Hz
                     self.get_logger().info('Requesting ARM...')
@@ -135,7 +137,7 @@ class DroneDriver(Node):
         msg.target_system = 1
         msg.target_component = 1
         msg.source_system = 1
-        msg.source_component = 1
+        msg.source_component = 191  # 191 = MAV_COMP_ID_ONBOARD_COMPUTER (Required so PX4 doesn't ignore it!)
         msg.from_external = True
         msg.timestamp = int(self.get_clock().now().nanoseconds / 1000)
         self.vehicle_command_pub.publish(msg)
