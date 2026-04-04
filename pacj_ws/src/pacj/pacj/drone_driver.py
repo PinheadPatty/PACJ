@@ -1,9 +1,10 @@
+import math
 import rclpy
 from rclpy.node import Node
 from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy, DurabilityPolicy
 
 from geometry_msgs.msg import Twist
-from px4_msgs.msg import OffboardControlMode, TrajectorySetpoint, VehicleCommand, VehicleStatus
+from px4_msgs.msg import OffboardControlMode, TrajectorySetpoint, VehicleCommand, VehicleStatus, VehicleLocalPosition
 
 class DroneDriver(Node):
     def __init__(self):
@@ -28,6 +29,8 @@ class DroneDriver(Node):
         # Subscribers from PX4
         self.vehicle_status_sub = self.create_subscription(
             VehicleStatus, '/fmu/out/vehicle_status', self.vehicle_status_cb, qos_profile)
+        self.vehicle_local_pos_sub = self.create_subscription(
+            VehicleLocalPosition, '/fmu/out/vehicle_local_position', self.vehicle_local_pos_cb, qos_profile)
 
         # Subscribers from Teleop (VM)
         self.cmd_vel_sub = self.create_subscription(
@@ -36,6 +39,7 @@ class DroneDriver(Node):
         # State Variables
         self.nav_state = VehicleStatus.NAVIGATION_STATE_MAX
         self.arming_state = VehicleStatus.ARMING_STATE_DISARMED
+        self.current_yaw = 0.0
         self.current_twist = Twist()
         self.last_cmd_time = self.get_clock().now()
         
@@ -48,6 +52,9 @@ class DroneDriver(Node):
         self.timer = self.create_timer(self.timer_period, self.timer_cb)
 
         self.get_logger().info("Micro XRCE-DDS Drone Driver Initialized.")
+
+    def vehicle_local_pos_cb(self, msg):
+        self.current_yaw = msg.heading
 
     def vehicle_status_cb(self, msg):
         # Keep track of the drone's actual state
@@ -76,26 +83,8 @@ class DroneDriver(Node):
         self.publish_offboard_control_mode()
         self.publish_trajectory_setpoint()
 
-        # Auto-arm and switch to OFFBOARD mode 
-        # Handshake: Only try to arm/switch mode after 1 second of streaming setpoints
-        if (now - self.start_time).nanoseconds > 1e9:
-            # We must be in offboard mode before arming
-            if self.nav_state != VehicleStatus.NAVIGATION_STATE_OFFBOARD:
-                if (now - self.mode_req_time).nanoseconds > 1e9:  # Limit requests to 1Hz
-                    self.get_logger().info('Requesting OFFBOARD mode...')
-                    # Command PX4 to switch to Offboard mode
-                    self.publish_vehicle_command(
-                        VehicleCommand.VEHICLE_CMD_DO_SET_MODE, param1=1.0, param2=6.0) # 1.0=Custom mode, 6.0=OFFBOARD
-                    self.mode_req_time = now
-                    
-            # Once in offboard mode, we can arm
-            elif self.arming_state != VehicleStatus.ARMING_STATE_ARMED:
-                if (now - self.arm_req_time).nanoseconds > 1e9:  # Limit requests to 1Hz
-                    self.get_logger().info('Requesting ARM...')
-                    # Command PX4 to arm
-                    self.publish_vehicle_command(
-                        VehicleCommand.VEHICLE_CMD_COMPONENT_ARM_DISARM, param1=1.0) # 1.0=Arm
-                    self.arm_req_time = now
+        # NOTE: Automatic arming and offboard switching has been removed.
+        # You must now arm and switch to Offboard mode manually using your joystick/QGC!
 
     def publish_offboard_control_mode(self):
         msg = OffboardControlMode()
@@ -110,20 +99,32 @@ class DroneDriver(Node):
     def publish_trajectory_setpoint(self):
         msg = TrajectorySetpoint()
         
-        # Coordinate Frame Translation:
-        # ROS 2 (cmd_vel) uses FLU (Forward, Left, Up)
-        # PX4 uses NED (North, East, Down)
-        msg.velocity[0] = self.current_twist.linear.x   # North = Forward
-        msg.velocity[1] = -self.current_twist.linear.y  # East = -Left (Right)
-        msg.velocity[2] = -self.current_twist.linear.z  # Down = -Up
+        # cmd_vel is in Body Frame (FLU).
+        # We need to convert it to Local Frame (NED).
+        # FLU: X = Forward, Y = Left, Z = Up
+        # NED: X = North, Y = East, Z = Down
+        
+        # 1. Convert FLU to Body-NED (Forward, Right, Down)
+        body_forward = float(self.current_twist.linear.x)
+        body_right = -float(self.current_twist.linear.y)
+        body_down = -float(self.current_twist.linear.z)
+        
+        # 2. Rotate Body-NED to Local-NED using current yaw
+        cos_yaw = math.cos(self.current_yaw)
+        sin_yaw = math.sin(self.current_yaw)
+        
+        msg.velocity[0] = body_forward * cos_yaw - body_right * sin_yaw  # North
+        msg.velocity[1] = body_forward * sin_yaw + body_right * cos_yaw  # East
+        msg.velocity[2] = body_down                                      # Down
         
         # Yaw rate (Z axis rotation). 
         # ROS is counter-clockwise positive (Up), PX4 is clockwise positive (Down)
-        msg.yawspeed = -self.current_twist.angular.z
+        msg.yawspeed = -float(self.current_twist.angular.z)
 
         # In velocity control mode, position and acceleration must be explicitly set to NaN
         msg.position = [float('nan'), float('nan'), float('nan')]
         msg.acceleration = [float('nan'), float('nan'), float('nan')]
+        msg.jerk = [float('nan'), float('nan'), float('nan')]
         msg.yaw = float('nan')
 
         msg.timestamp = int(self.get_clock().now().nanoseconds / 1000)
