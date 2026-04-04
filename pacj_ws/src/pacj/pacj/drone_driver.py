@@ -70,15 +70,15 @@ class DroneDriver(Node):
         self.publish_trajectory_setpoint()
 
         # Auto-arm and switch to OFFBOARD mode 
-        if self.nav_state != VehicleStatus.NAVIGATION_STATE_OFFBOARD:
-            # Command PX4 to switch to Offboard mode
-            self.publish_vehicle_command(
-                VehicleCommand.VEHICLE_CMD_DO_SET_MODE, param1=1.0, param2=6.0) # 1.0=Custom mode, 6.0=OFFBOARD
-                
-        elif self.arming_state != VehicleStatus.ARMING_STATE_ARMED:
+        if self.arming_state != VehicleStatus.ARMING_STATE_ARMED:
             # Command PX4 to arm
             self.publish_vehicle_command(
                 VehicleCommand.VEHICLE_CMD_COMPONENT_ARM_DISARM, param1=1.0) # 1.0=Arm
+                
+        elif self.nav_state != VehicleStatus.NAVIGATION_STATE_OFFBOARD:
+            # Command PX4 to switch to Offboard mode
+            self.publish_vehicle_command(
+                VehicleCommand.VEHICLE_CMD_DO_SET_MODE, param1=1.0, param2=6.0) # 1.0=Custom mode, 6.0=OFFBOARD
 
     def publish_offboard_control_mode(self):
         msg = OffboardControlMode()
