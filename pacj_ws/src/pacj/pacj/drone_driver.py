@@ -101,22 +101,18 @@ class DroneDriver(Node):
         msg = TrajectorySetpoint()
         
         # cmd_vel is in Body Frame (FLU).
-        # We need to convert it to Local Frame (NED).
-        # FLU: X = Forward, Y = Left, Z = Up
-        # NED: X = North, Y = East, Z = Down
+        # To prove that velocity commands work without complex quaternion math,
+        # we will directly map "Forward" to "North" and "Left" to "West".
+        # This means pressing 'i' will always make the drone fly North globally!
         
         # 1. Convert FLU to Body-NED (Forward, Right, Down)
         body_forward = float(self.current_twist.linear.x)
         body_right = -float(self.current_twist.linear.y)
         body_down = -float(self.current_twist.linear.z)
         
-        # 2. Rotate Body-NED to Local-NED using current yaw
-        cos_yaw = math.cos(self.current_yaw)
-        sin_yaw = math.sin(self.current_yaw)
-        
-        msg.velocity[0] = body_forward * cos_yaw - body_right * sin_yaw  # North
-        msg.velocity[1] = body_forward * sin_yaw + body_right * cos_yaw  # East
-        msg.velocity[2] = body_down                                      # Down
+        msg.velocity[0] = body_forward  # North
+        msg.velocity[1] = body_right    # East
+        msg.velocity[2] = body_down     # Down
         
         # Yaw rate (Z axis rotation). 
         # ROS is counter-clockwise positive (Up), PX4 is clockwise positive (Down)
@@ -130,6 +126,10 @@ class DroneDriver(Node):
 
         msg.timestamp = int(self.get_clock().now().nanoseconds / 1000)
         self.trajectory_setpoint_pub.publish(msg)
+        
+        # LOGGING: Print exactly what we are sending so you can verify!
+        if abs(msg.velocity[0]) > 0.05 or abs(msg.velocity[1]) > 0.05 or abs(msg.velocity[2]) > 0.05 or abs(msg.yawspeed) > 0.05:
+            self.get_logger().info(f"Sending PX4 Vel -> N: {msg.velocity[0]:.2f}, E: {msg.velocity[1]:.2f}, D: {msg.velocity[2]:.2f}, YawSpeed: {msg.yawspeed:.2f}")
 
     def publish_vehicle_command(self, command, param1=0.0, param2=0.0):
         msg = VehicleCommand()
