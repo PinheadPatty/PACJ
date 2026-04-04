@@ -64,10 +64,13 @@ class DroneDriver(Node):
         self.last_cmd_time = self.get_clock().now()
 
     def timer_cb(self):
-        # Safety timeout: if no /cmd_vel received in 0.5s, hover (zero velocity)
         now = self.get_clock().now()
-        if (now - self.last_cmd_time).nanoseconds > 5e8:
-            self.current_twist = Twist()
+        
+        # NOTE: Removed 0.5s safety timeout because teleop_twist_keyboard 
+        # only sends messages on key presses, not continuously.
+        # In a real flight with a joystick, you should restore a timeout here!
+        # if (now - self.last_cmd_time).nanoseconds > 5e8:
+        #     self.current_twist = Twist()
 
         # We must publish these constantly to keep PX4 happy in OFFBOARD mode
         self.publish_offboard_control_mode()
