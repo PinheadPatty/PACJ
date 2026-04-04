@@ -81,6 +81,7 @@ class DroneDriver(Node):
         if (now - self.start_time).nanoseconds > 1e9:
             if self.nav_state != VehicleStatus.NAVIGATION_STATE_OFFBOARD:
                 if (now - self.mode_req_time).nanoseconds > 1e9:  # Limit requests to 1Hz
+                    self.get_logger().info('Requesting OFFBOARD mode...')
                     # Command PX4 to switch to Offboard mode
                     self.publish_vehicle_command(
                         VehicleCommand.VEHICLE_CMD_DO_SET_MODE, param1=1.0, param2=6.0) # 1.0=Custom mode, 6.0=OFFBOARD
@@ -88,6 +89,7 @@ class DroneDriver(Node):
                     
             elif self.arming_state != VehicleStatus.ARMING_STATE_ARMED:
                 if (now - self.arm_req_time).nanoseconds > 1e9:  # Limit requests to 1Hz
+                    self.get_logger().info('Requesting ARM...')
                     # Command PX4 to arm
                     self.publish_vehicle_command(
                         VehicleCommand.VEHICLE_CMD_COMPONENT_ARM_DISARM, param1=1.0) # 1.0=Arm
