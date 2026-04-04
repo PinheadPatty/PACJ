@@ -4,7 +4,7 @@ from rclpy.node import Node
 from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy, DurabilityPolicy
 
 from geometry_msgs.msg import Twist
-from px4_msgs.msg import OffboardControlMode, TrajectorySetpoint, VehicleCommand, VehicleStatus, VehicleLocalPosition
+from px4_msgs.msg import OffboardControlMode, TrajectorySetpoint, VehicleCommand, VehicleStatus, VehicleAttitude
 
 class DroneDriver(Node):
     def __init__(self):
@@ -29,8 +29,8 @@ class DroneDriver(Node):
         # Subscribers from PX4
         self.vehicle_status_sub = self.create_subscription(
             VehicleStatus, '/fmu/out/vehicle_status', self.vehicle_status_cb, qos_profile)
-        self.vehicle_local_pos_sub = self.create_subscription(
-            VehicleLocalPosition, '/fmu/out/vehicle_local_position', self.vehicle_local_pos_cb, qos_profile)
+        self.vehicle_attitude_sub = self.create_subscription(
+            VehicleAttitude, '/fmu/out/vehicle_attitude', self.vehicle_attitude_cb, qos_profile)
 
         # Subscribers from Teleop (VM)
         self.cmd_vel_sub = self.create_subscription(
@@ -53,8 +53,9 @@ class DroneDriver(Node):
 
         self.get_logger().info("Micro XRCE-DDS Drone Driver Initialized.")
 
-    def vehicle_local_pos_cb(self, msg):
-        self.current_yaw = msg.heading
+    def vehicle_attitude_cb(self, msg):
+        q = msg.q
+        self.current_yaw = math.atan2(2.0 * (q[0] * q[3] + q[1] * q[2]), 1.0 - 2.0 * (q[2] * q[2] + q[3] * q[3]))
 
     def vehicle_status_cb(self, msg):
         # Keep track of the drone's actual state
