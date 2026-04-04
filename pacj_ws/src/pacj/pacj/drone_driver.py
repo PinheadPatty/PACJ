@@ -106,9 +106,13 @@ class DroneDriver(Node):
         # NED: X = North, Y = East, Z = Down
         
         # 1. Convert FLU to Body-NED (Forward, Right, Down)
-        body_forward = float(self.current_twist.linear.x)
-        body_right = -float(self.current_twist.linear.y)
-        body_down = -float(self.current_twist.linear.z)
+        # We multiply by 3.0 here so it flies much faster without you needing
+        # to manually increase the speed in teleop_twist_keyboard!
+        speed_multiplier = 3.0
+        
+        body_forward = float(self.current_twist.linear.x) * speed_multiplier
+        body_right = -float(self.current_twist.linear.y) * speed_multiplier
+        body_down = -float(self.current_twist.linear.z) * speed_multiplier
         
         # 2. Rotate Body-NED to Local-NED using current yaw
         cos_yaw = math.cos(self.current_yaw)
