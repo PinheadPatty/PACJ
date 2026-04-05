@@ -32,6 +32,37 @@ class TfBroadcaster(Node):
 
         self.get_logger().info("TF Broadcaster initialized.")
 
+    def euler_from_quaternion(self, w, x, y, z):
+        # roll (x)
+        sinr_cosp = 2 * (w * x + y * z)
+        cosr_cosp = 1 - 2 * (x * x + y * y)
+        roll = math.atan2(sinr_cosp, cosr_cosp)
+        # pitch (y)
+        sinp = 2 * (w * y - z * x)
+        if abs(sinp) >= 1:
+            pitch = math.copysign(math.pi / 2, sinp)
+        else:
+            pitch = math.asin(sinp)
+        # yaw (z)
+        siny_cosp = 2 * (w * z + x * y)
+        cosy_cosp = 1 - 2 * (y * y + z * z)
+        yaw = math.atan2(siny_cosp, cosy_cosp)
+        return roll, pitch, yaw
+
+    def quaternion_from_euler(self, roll, pitch, yaw):
+        cy = math.cos(yaw * 0.5)
+        sy = math.sin(yaw * 0.5)
+        cp = math.cos(pitch * 0.5)
+        sp = math.sin(pitch * 0.5)
+        cr = math.cos(roll * 0.5)
+        sr = math.sin(roll * 0.5)
+
+        w = cy * cp * cr + sy * sp * sr
+        x = cy * cp * sr - sy * sp * cr
+        y = sy * cp * sr + cy * sp * cr
+        z = sy * cp * cr - cy * sp * sr
+        return [w, x, y, z]
+
     def odom_cb(self, msg):
         t = TransformStamped()
 
@@ -63,39 +94,24 @@ class TfBroadcaster(Node):
         t.transform.translation.z = ros_z
 
         # Extract Quaternion from message and convert NED to ENU properly
-        # PX4 q is [w, x, y, z] representing rotation from NED to FRD
-        # We need the rotation from ENU to FLU.
-        a = 0.7071068
-        w_ned = float(msg.q[0])
-        x_ned = float(msg.q[1])
-        y_ned = float(msg.q[2])
-        z_ned = float(msg.q[3])
+        # We use explicit Euler angle conversion to prevent any quaternion handedness issues
+        roll_ned, pitch_ned, yaw_ned = self.euler_from_quaternion(
+            float(msg.q[0]), float(msg.q[1]), float(msg.q[2]), float(msg.q[3])
+        )
         
-        # A simpler, much more reliable conversion from NED (PX4) to ENU (ROS)
-        # 1. Yaw needs to be rotated 90 degrees CCW (North -> Y axis, East -> X axis)
-        # 2. Pitch and Roll axes need to be flipped
-        q_enu_w = w_ned
-        q_enu_x = y_ned
-        q_enu_y = x_ned
-        q_enu_z = -z_ned
+        # Convert NED Euler to ENU Euler
+        # NED (North-East-Down) to ENU (East-North-Up)
+        roll_enu = roll_ned
+        pitch_enu = -pitch_ned
+        yaw_enu = (math.pi / 2.0) - yaw_ned
         
-        # In ROS, the marker natively points along the X axis.
-        # In our translation logic, we set X to East and Y to North.
-        # Since the marker arrow defaults to pointing along X (East), we need to rotate 
-        # the quaternion by 90 degrees around Z to make the arrow point North (Y).
+        # Convert back to quaternion for ROS (FLU)
+        q_enu = self.quaternion_from_euler(roll_enu, pitch_enu, yaw_enu)
         
-        q_offset_w = 0.7071068
-        q_offset_z = 0.7071068
-        
-        final_w = q_enu_w * q_offset_w - q_enu_z * q_offset_z
-        final_x = q_enu_x * q_offset_w + q_enu_y * q_offset_z
-        final_y = q_enu_y * q_offset_w - q_enu_x * q_offset_z
-        final_final_z = q_enu_w * q_offset_z + q_enu_z * q_offset_w
-
-        t.transform.rotation.x = final_x
-        t.transform.rotation.y = final_y
-        t.transform.rotation.z = final_final_z
-        t.transform.rotation.w = final_w
+        t.transform.rotation.w = q_enu[0]
+        t.transform.rotation.x = q_enu[1]
+        t.transform.rotation.y = q_enu[2]
+        t.transform.rotation.z = q_enu[3]
 
         # Send the transformation
         self.tf_broadcaster.sendTransform(t)
@@ -114,18 +130,11 @@ class TfBroadcaster(Node):
         marker.pose.position.y = t.transform.translation.y
         marker.pose.position.z = t.transform.translation.z
         
-        # Rotate the marker 90 degrees around Z axis (yaw) so the arrow points North (Y axis) instead of East (X axis)
-        # Quaternion for 90 degree Z rotation: w=0.707, x=0, y=0, z=0.707
-        # We need to multiply the drone's orientation by this 90 degree offset
-        
-        q_drone = [t.transform.rotation.x, t.transform.rotation.y, t.transform.rotation.z, t.transform.rotation.w]
-        q_offset = [0.0, 0.0, 0.7071068, 0.7071068]
-        
-        # Quaternion multiplication: q_result = q_drone * q_offset
-        marker.pose.orientation.w = q_drone[3]*q_offset[3] - q_drone[0]*q_offset[0] - q_drone[1]*q_offset[1] - q_drone[2]*q_offset[2]
-        marker.pose.orientation.x = q_drone[3]*q_offset[0] + q_drone[0]*q_offset[3] + q_drone[1]*q_offset[2] - q_drone[2]*q_offset[1]
-        marker.pose.orientation.y = q_drone[3]*q_offset[1] - q_drone[0]*q_offset[2] + q_drone[1]*q_offset[3] + q_drone[2]*q_offset[0]
-        marker.pose.orientation.z = q_drone[3]*q_offset[2] + q_drone[0]*q_offset[1] - q_drone[1]*q_offset[0] + q_drone[2]*q_offset[3]
+        # Orient the arrow to match the drone's orientation in the odom frame
+        marker.pose.orientation.x = t.transform.rotation.x
+        marker.pose.orientation.y = t.transform.rotation.y
+        marker.pose.orientation.z = t.transform.rotation.z
+        marker.pose.orientation.w = t.transform.rotation.w
         
         # Size of the arrow
         marker.scale.x = 1.0  # Length
