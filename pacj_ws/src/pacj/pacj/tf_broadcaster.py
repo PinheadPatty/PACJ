@@ -47,7 +47,13 @@ class TfBroadcaster(Node):
         px4_e = float(msg.position[1])
         px4_d = float(msg.position[2])
         
-        # Convert NED to ENU
+        # Convert NED to ENU properly for translation
+        # PX4 uses NED (North, East, Down)
+        # ROS 2 geometry_msgs uses ENU (East, North, Up)
+        
+        # When PX4 moves forward (North), it should move up the Y-axis in ROS.
+        # When PX4 moves right (East), it should move up the X-axis in ROS.
+        
         ros_x = px4_e   # East = X
         ros_y = px4_n   # North = Y
         ros_z = -px4_d  # Up = -Down
@@ -65,15 +71,31 @@ class TfBroadcaster(Node):
         y_ned = float(msg.q[2])
         z_ned = float(msg.q[3])
         
-        q_enu_w = -a * (w_ned + z_ned)
-        q_enu_x = -a * (x_ned + y_ned)
-        q_enu_y =  a * (y_ned - x_ned)
-        q_enu_z =  a * (z_ned - w_ned)
+        # A simpler, much more reliable conversion from NED (PX4) to ENU (ROS)
+        # 1. Yaw needs to be rotated 90 degrees CCW (North -> Y axis, East -> X axis)
+        # 2. Pitch and Roll axes need to be flipped
+        q_enu_w = w_ned
+        q_enu_x = y_ned
+        q_enu_y = x_ned
+        q_enu_z = -z_ned
+        
+        # In ROS, the marker natively points along the X axis.
+        # In our translation logic, we set X to East and Y to North.
+        # Since the marker arrow defaults to pointing along X (East), we need to rotate 
+        # the quaternion by 90 degrees around Z to make the arrow point North (Y).
+        
+        q_offset_w = 0.7071068
+        q_offset_z = 0.7071068
+        
+        final_w = q_enu_w * q_offset_w - q_enu_z * q_offset_z
+        final_x = q_enu_x * q_offset_w + q_enu_y * q_offset_z
+        final_y = q_enu_y * q_offset_w - q_enu_x * q_offset_z
+        final_final_z = q_enu_w * q_offset_z + q_enu_z * q_offset_w
 
-        t.transform.rotation.x = q_enu_x
-        t.transform.rotation.y = q_enu_y
-        t.transform.rotation.z = q_enu_z
-        t.transform.rotation.w = q_enu_w
+        t.transform.rotation.x = final_x
+        t.transform.rotation.y = final_y
+        t.transform.rotation.z = final_final_z
+        t.transform.rotation.w = final_w
 
         # Send the transformation
         self.tf_broadcaster.sendTransform(t)
