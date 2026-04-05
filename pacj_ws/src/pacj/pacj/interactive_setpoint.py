@@ -20,54 +20,75 @@ class InteractiveSetpoint(Node):
         self.int_marker.description = 'Drone 3D Target'
         self.int_marker.scale = 1.0
 
-        # Add movement controls (X, Y, Z translation)
+        # Create a more dynamic, full 6-DOF control setup
+        # This will add the familiar RViz rings (for rotation/yaw) and arrows (for translation)
         
-        # X-axis control
-        control_x = InteractiveMarkerControl()
-        control_x.orientation.w = 1.0
-        control_x.orientation.x = 1.0
-        control_x.orientation.y = 0.0
-        control_x.orientation.z = 0.0
-        control_x.name = "move_x"
-        control_x.interaction_mode = InteractiveMarkerControl.MOVE_AXIS
-        self.int_marker.controls.append(control_x)
+        # --- TRANSLATION CONTROLS (Arrows) ---
         
-        # Y-axis control
-        control_y = InteractiveMarkerControl()
-        control_y.orientation.w = 1.0
-        control_y.orientation.x = 0.0
-        control_y.orientation.y = 1.0
-        control_y.orientation.z = 0.0
-        control_y.name = "move_y"
-        control_y.interaction_mode = InteractiveMarkerControl.MOVE_AXIS
-        self.int_marker.controls.append(control_y)
+        # X-axis Translation (Red Arrow)
+        tx_control = InteractiveMarkerControl()
+        tx_control.name = "move_x"
+        tx_control.orientation.w = 1.0
+        tx_control.orientation.x = 1.0
+        tx_control.orientation.y = 0.0
+        tx_control.orientation.z = 0.0
+        tx_control.interaction_mode = InteractiveMarkerControl.MOVE_AXIS
+        self.int_marker.controls.append(tx_control)
         
-        # Z-axis control
-        control_z = InteractiveMarkerControl()
-        control_z.orientation.w = 1.0
-        control_z.orientation.x = 0.0
-        control_z.orientation.y = 0.0
-        control_z.orientation.z = 1.0
-        control_z.name = "move_z"
-        control_z.interaction_mode = InteractiveMarkerControl.MOVE_AXIS
-        self.int_marker.controls.append(control_z)
+        # Y-axis Translation (Green Arrow)
+        ty_control = InteractiveMarkerControl()
+        ty_control.name = "move_y"
+        ty_control.orientation.w = 1.0
+        ty_control.orientation.x = 0.0
+        ty_control.orientation.y = 1.0
+        ty_control.orientation.z = 0.0
+        ty_control.interaction_mode = InteractiveMarkerControl.MOVE_AXIS
+        self.int_marker.controls.append(ty_control)
         
-        # XY-plane control (drag around on a flat plane)
-        control_xy = InteractiveMarkerControl()
-        control_xy.orientation.w = 1.0
-        control_xy.orientation.x = 0.0
-        control_xy.orientation.y = 1.0
-        control_xy.orientation.z = 0.0
-        control_xy.name = "move_xy"
-        control_xy.interaction_mode = InteractiveMarkerControl.MOVE_PLANE
-        self.int_marker.controls.append(control_xy)
+        # Z-axis Translation (Blue Arrow)
+        tz_control = InteractiveMarkerControl()
+        tz_control.name = "move_z"
+        tz_control.orientation.w = 1.0
+        tz_control.orientation.x = 0.0
+        tz_control.orientation.y = 0.0
+        tz_control.orientation.z = 1.0
+        tz_control.interaction_mode = InteractiveMarkerControl.MOVE_AXIS
+        self.int_marker.controls.append(tz_control)
         
-        # Free 3D movement (click and drag the center box anywhere)
-        control_free = InteractiveMarkerControl()
-        control_free.name = "move_free"
-        control_free.interaction_mode = InteractiveMarkerControl.MOVE_3D
-        control_free.always_visible = True
-        self.int_marker.controls.append(control_free)
+        # --- ROTATION CONTROLS (Rings) ---
+        
+        # Z-axis Rotation / Yaw (Blue Ring)
+        # This is the most important one for drones!
+        rz_control = InteractiveMarkerControl()
+        rz_control.name = "rotate_z"
+        rz_control.orientation.w = 1.0
+        rz_control.orientation.x = 0.0
+        rz_control.orientation.y = 1.0
+        rz_control.orientation.z = 0.0
+        rz_control.interaction_mode = InteractiveMarkerControl.ROTATE_AXIS
+        self.int_marker.controls.append(rz_control)
+
+        # --- CENTER DRAG CONTROL (Free movement) ---
+        # A box in the middle to drag it around freely
+        free_control = InteractiveMarkerControl()
+        free_control.name = "move_free"
+        free_control.interaction_mode = InteractiveMarkerControl.MOVE_3D
+        free_control.always_visible = True
+        
+        # Add a visual box to the free control so you know where to grab it
+        from visualization_msgs.msg import Marker
+        box_marker = Marker()
+        box_marker.type = Marker.CUBE
+        box_marker.scale.x = 0.25
+        box_marker.scale.y = 0.25
+        box_marker.scale.z = 0.25
+        box_marker.color.r = 0.5
+        box_marker.color.g = 0.5
+        box_marker.color.b = 0.5
+        box_marker.color.a = 0.8
+        free_control.markers.append(box_marker)
+        
+        self.int_marker.controls.append(free_control)
 
         # Subscribe to PX4 odometry so we can snap the marker to the drone on startup
         qos_profile = QoSProfile(

@@ -166,8 +166,22 @@ class DroneDriver(Node):
             msg.position[1] = ros_x   # East = X
             msg.position[2] = -ros_z  # Down = -Z
             
-            # We don't control yaw in this simple example, just maintain current heading
-            msg.yaw = float(self.current_yaw)
+            # We used to just maintain current heading, but now we can take the yaw from the 3D marker!
+            # The RViz marker sends a quaternion, we need to extract the yaw (Z-axis rotation)
+            q_x = self.current_pose.pose.orientation.x
+            q_y = self.current_pose.pose.orientation.y
+            q_z = self.current_pose.pose.orientation.z
+            q_w = self.current_pose.pose.orientation.w
+            
+            # Convert Quaternion to Yaw (Heading)
+            siny_cosp = 2.0 * (q_w * q_z + q_x * q_y)
+            cosy_cosp = 1.0 - 2.0 * (q_y * q_y + q_z * q_z)
+            target_yaw = math.atan2(siny_cosp, cosy_cosp)
+            
+            # Note: We need to adjust for the ENU vs NED handedness if the drone spins wrong!
+            # Usually ROS ENU yaw (counter-clockwise) is negative of PX4 NED yaw (clockwise)
+            # Let's try the direct yaw first, or flip the sign if it spins opposite to the marker ring
+            msg.yaw = -target_yaw
             
             # Ignore velocity and acceleration
             msg.velocity = [float('nan'), float('nan'), float('nan')]
