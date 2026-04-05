@@ -55,6 +55,7 @@ class DronePlanner(Node):
         self.cmd_pub.publish(msg)
         
         # Publish a simple straight-line Path for visualization in RViz
+        # We will make this line yellow
         path = Path()
         path.header.stamp = self.get_clock().now().to_msg()
         path.header.frame_id = 'odom'
