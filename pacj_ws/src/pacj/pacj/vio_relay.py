@@ -31,6 +31,37 @@ class VioRelay(Node):
         
         self.get_logger().info("VIO Relay initialized.")
 
+    def euler_from_quaternion(self, w, x, y, z):
+        # roll (x)
+        sinr_cosp = 2 * (w * x + y * z)
+        cosr_cosp = 1 - 2 * (x * x + y * y)
+        roll = math.atan2(sinr_cosp, cosr_cosp)
+        # pitch (y)
+        sinp = 2 * (w * y - z * x)
+        if abs(sinp) >= 1:
+            pitch = math.copysign(math.pi / 2, sinp)
+        else:
+            pitch = math.asin(sinp)
+        # yaw (z)
+        siny_cosp = 2 * (w * z + x * y)
+        cosy_cosp = 1 - 2 * (y * y + z * z)
+        yaw = math.atan2(siny_cosp, cosy_cosp)
+        return roll, pitch, yaw
+
+    def quaternion_from_euler(self, roll, pitch, yaw):
+        cy = math.cos(yaw * 0.5)
+        sy = math.sin(yaw * 0.5)
+        cp = math.cos(pitch * 0.5)
+        sp = math.sin(pitch * 0.5)
+        cr = math.cos(roll * 0.5)
+        sr = math.sin(roll * 0.5)
+
+        w = cy * cp * cr + sy * sp * sr
+        x = cy * cp * sr - sy * sp * cr
+        y = sy * cp * sr + cy * sp * cr
+        z = sy * cp * cr - cy * sp * sr
+        return [w, x, y, z]
+
     def odom_cb(self, msg):
         vio_msg = VehicleVisualOdometry()
         
@@ -55,23 +86,24 @@ class VioRelay(Node):
             self.get_logger().info(f"Relaying RTAB-Map Odom to PX4 -> X: {ros_x:.2f}, Y: {ros_y:.2f}, Z: {ros_z:.2f}")
             self.last_log_time = now
             
-        # Convert quaternion from ENU to NED
-        # 1. ENU to NED for positions: [x, y, z] -> [y, x, -z]
-        # 2. For Quaternions [x, y, z, w], mapping is: 
-        # q_ned_x = q_enu_y
-        # q_ned_y = q_enu_x
-        # q_ned_z = -q_enu_z
-        # q_ned_w = q_enu_w
+        # Extract ENU Euler angles
+        q = msg.pose.pose.orientation
+        roll_enu, pitch_enu, yaw_enu = self.euler_from_quaternion(q.w, q.x, q.y, q.z)
         
-        q_enu_x = msg.pose.pose.orientation.x
-        q_enu_y = msg.pose.pose.orientation.y
-        q_enu_z = msg.pose.pose.orientation.z
-        q_enu_w = msg.pose.pose.orientation.w
+        # Convert ENU to NED
+        # In ENU: East is 0, North is pi/2
+        # In NED: North is 0, East is pi/2
+        roll_ned = roll_enu
+        pitch_ned = -pitch_enu
+        yaw_ned = (math.pi / 2.0) - yaw_enu
         
-        vio_msg.q[0] = q_enu_w
-        vio_msg.q[1] = q_enu_y
-        vio_msg.q[2] = q_enu_x
-        vio_msg.q[3] = -q_enu_z
+        # Convert back to quaternion for PX4 (NED)
+        q_ned = self.quaternion_from_euler(roll_ned, pitch_ned, yaw_ned)
+        
+        vio_msg.q[0] = q_ned[0] # w
+        vio_msg.q[1] = q_ned[1] # x
+        vio_msg.q[2] = q_ned[2] # y
+        vio_msg.q[3] = q_ned[3] # z
 
         # Velocity ENU to NED
         ros_vx = float(msg.twist.twist.linear.x)
