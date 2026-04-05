@@ -79,17 +79,22 @@ class TfBroadcaster(Node):
         # Publish a visual marker for the drone
         marker = Marker()
         marker.header.stamp = t.header.stamp
-        marker.header.frame_id = 'base_link'
+        marker.header.frame_id = 'odom'
         marker.ns = 'drone'
         marker.id = 0
         marker.type = Marker.ARROW
         marker.action = Marker.ADD
         
-        # The arrow points along the X axis (forward in base_link)
-        marker.pose.position.x = 0.0
-        marker.pose.position.y = 0.0
-        marker.pose.position.z = 0.0
-        marker.pose.orientation.w = 1.0
+        # Position the arrow at the drone's position in the odom frame
+        marker.pose.position.x = t.transform.translation.x
+        marker.pose.position.y = t.transform.translation.y
+        marker.pose.position.z = t.transform.translation.z
+        
+        # Orient the arrow to match the drone's orientation in the odom frame
+        marker.pose.orientation.x = t.transform.rotation.x
+        marker.pose.orientation.y = t.transform.rotation.y
+        marker.pose.orientation.z = t.transform.rotation.z
+        marker.pose.orientation.w = t.transform.rotation.w
         
         # Size of the arrow
         marker.scale.x = 0.6  # Length
