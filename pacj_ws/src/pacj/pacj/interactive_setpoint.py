@@ -54,6 +54,23 @@ class InteractiveSetpoint(Node):
         control_z.name = "move_z"
         control_z.interaction_mode = InteractiveMarkerControl.MOVE_AXIS
         self.int_marker.controls.append(control_z)
+        
+        # XY-plane control (drag around on a flat plane)
+        control_xy = InteractiveMarkerControl()
+        control_xy.orientation.w = 1.0
+        control_xy.orientation.x = 0.0
+        control_xy.orientation.y = 1.0
+        control_xy.orientation.z = 0.0
+        control_xy.name = "move_xy"
+        control_xy.interaction_mode = InteractiveMarkerControl.MOVE_PLANE
+        self.int_marker.controls.append(control_xy)
+        
+        # Free 3D movement (click and drag the center box anywhere)
+        control_free = InteractiveMarkerControl()
+        control_free.name = "move_free"
+        control_free.interaction_mode = InteractiveMarkerControl.MOVE_3D
+        control_free.always_visible = True
+        self.int_marker.controls.append(control_free)
 
         self.server.insert(self.int_marker, feedback_callback=self.process_feedback)
         self.server.applyChanges()

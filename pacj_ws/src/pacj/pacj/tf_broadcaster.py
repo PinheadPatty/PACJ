@@ -5,6 +5,7 @@ from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy, DurabilityPo
 
 from px4_msgs.msg import VehicleOdometry
 from geometry_msgs.msg import TransformStamped
+from visualization_msgs.msg import Marker
 from tf2_ros import TransformBroadcaster
 
 class TfBroadcaster(Node):
@@ -25,6 +26,9 @@ class TfBroadcaster(Node):
 
         # TF Broadcaster
         self.tf_broadcaster = TransformBroadcaster(self)
+        
+        # Marker Publisher (to easily see the drone in RViz)
+        self.marker_pub = self.create_publisher(Marker, '/drone_marker', 10)
 
         self.get_logger().info("TF Broadcaster initialized.")
 
@@ -71,6 +75,34 @@ class TfBroadcaster(Node):
 
         # Send the transformation
         self.tf_broadcaster.sendTransform(t)
+
+        # Publish a visual marker for the drone
+        marker = Marker()
+        marker.header.stamp = t.header.stamp
+        marker.header.frame_id = 'base_link'
+        marker.ns = 'drone'
+        marker.id = 0
+        marker.type = Marker.ARROW
+        marker.action = Marker.ADD
+        
+        # The arrow points along the X axis (forward in base_link)
+        marker.pose.position.x = 0.0
+        marker.pose.position.y = 0.0
+        marker.pose.position.z = 0.0
+        marker.pose.orientation.w = 1.0
+        
+        # Size of the arrow
+        marker.scale.x = 0.6  # Length
+        marker.scale.y = 0.1  # Width
+        marker.scale.z = 0.1  # Height
+        
+        # Color (Red, opaque)
+        marker.color.a = 1.0
+        marker.color.r = 1.0
+        marker.color.g = 0.0
+        marker.color.b = 0.0
+        
+        self.marker_pub.publish(marker)
 
 def main(args=None):
     rclpy.init(args=args)
