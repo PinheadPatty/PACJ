@@ -3,6 +3,7 @@ from rclpy.node import Node
 from geometry_msgs.msg import PoseStamped, Point
 from visualization_msgs.msg import InteractiveMarker, InteractiveMarkerControl, InteractiveMarkerFeedback
 from interactive_markers.interactive_marker_server import InteractiveMarkerServer
+from interactive_markers.menu_handler import MenuHandler
 from px4_msgs.msg import VehicleOdometry
 from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy, DurabilityPolicy
 
@@ -102,6 +103,10 @@ class InteractiveSetpoint(Node):
         self.initialized_position = False
 
         self.get_logger().info("Interactive setpoint waiting for drone position to initialize...")
+        
+        # Setup context menu so the user can finalize the pose before sending
+        self.menu_handler = MenuHandler()
+        self.menu_handler.insert("Send Goal to Drone", callback=self.menu_callback)
 
     def odom_cb(self, msg):
         if not self.initialized_position:
@@ -111,21 +116,26 @@ class InteractiveSetpoint(Node):
             self.int_marker.pose.position.z = -float(msg.position[2]) + 2.0 # Up + 2m
             
             self.server.insert(self.int_marker, feedback_callback=self.process_feedback)
+            self.menu_handler.apply(self.server, self.int_marker.name)
             self.server.applyChanges()
             self.initialized_position = True
             
             self.get_logger().info(f"Snapped marker to drone -> X: {self.int_marker.pose.position.x:.2f}, Y: {self.int_marker.pose.position.y:.2f}. Ready to move in RViz!")
 
     def process_feedback(self, feedback):
-        if feedback.event_type == InteractiveMarkerFeedback.MOUSE_UP:
-            goal_pose = PoseStamped()
-            goal_pose.header.stamp = self.get_clock().now().to_msg()
-            goal_pose.header.frame_id = 'odom'
-            goal_pose.pose = feedback.pose
-            
-            self.goal_pub.publish(goal_pose)
-            
-            self.get_logger().info(f"Published new 3D goal -> X: {goal_pose.pose.position.x:.2f}, Y: {goal_pose.pose.position.y:.2f}, Z: {goal_pose.pose.position.z:.2f}")
+        # We no longer auto-publish on MOUSE_UP so the user can tweak the pose safely
+        # before right-clicking and hitting "Send Goal to Drone"
+        pass
+
+    def menu_callback(self, feedback):
+        goal_pose = PoseStamped()
+        goal_pose.header.stamp = self.get_clock().now().to_msg()
+        goal_pose.header.frame_id = 'odom'
+        goal_pose.pose = feedback.pose
+        
+        self.goal_pub.publish(goal_pose)
+        
+        self.get_logger().info(f"Published confirmed 3D goal -> X: {goal_pose.pose.position.x:.2f}, Y: {goal_pose.pose.position.y:.2f}, Z: {goal_pose.pose.position.z:.2f}")
 
 def main(args=None):
     rclpy.init(args=args)
