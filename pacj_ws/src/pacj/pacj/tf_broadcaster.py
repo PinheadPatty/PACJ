@@ -56,17 +56,19 @@ class TfBroadcaster(Node):
         t.transform.translation.y = ros_y
         t.transform.translation.z = ros_z
 
-        # Extract Quaternion from message and convert NED to ENU
-        # msg.q is in order [w, x, y, z] for px4
-        q_ned_w = float(msg.q[0])
-        q_ned_x = float(msg.q[1])
-        q_ned_y = float(msg.q[2])
-        q_ned_z = float(msg.q[3])
+        # Extract Quaternion from message and convert NED to ENU properly
+        # PX4 q is [w, x, y, z] representing rotation from NED to FRD
+        # We need the rotation from ENU to FLU.
+        a = 0.7071068
+        w_ned = float(msg.q[0])
+        x_ned = float(msg.q[1])
+        y_ned = float(msg.q[2])
+        z_ned = float(msg.q[3])
         
-        q_enu_x = q_ned_y
-        q_enu_y = q_ned_x
-        q_enu_z = -q_ned_z
-        q_enu_w = q_ned_w
+        q_enu_w = -a * (w_ned + z_ned)
+        q_enu_x = -a * (x_ned + y_ned)
+        q_enu_y =  a * (y_ned - x_ned)
+        q_enu_z =  a * (z_ned - w_ned)
 
         t.transform.rotation.x = q_enu_x
         t.transform.rotation.y = q_enu_y
@@ -90,11 +92,18 @@ class TfBroadcaster(Node):
         marker.pose.position.y = t.transform.translation.y
         marker.pose.position.z = t.transform.translation.z
         
-        # Orient the arrow to match the drone's orientation in the odom frame
-        marker.pose.orientation.x = t.transform.rotation.x
-        marker.pose.orientation.y = t.transform.rotation.y
-        marker.pose.orientation.z = t.transform.rotation.z
-        marker.pose.orientation.w = t.transform.rotation.w
+        # Rotate the marker 90 degrees around Z axis (yaw) so the arrow points North (Y axis) instead of East (X axis)
+        # Quaternion for 90 degree Z rotation: w=0.707, x=0, y=0, z=0.707
+        # We need to multiply the drone's orientation by this 90 degree offset
+        
+        q_drone = [t.transform.rotation.x, t.transform.rotation.y, t.transform.rotation.z, t.transform.rotation.w]
+        q_offset = [0.0, 0.0, 0.7071068, 0.7071068]
+        
+        # Quaternion multiplication: q_result = q_drone * q_offset
+        marker.pose.orientation.w = q_drone[3]*q_offset[3] - q_drone[0]*q_offset[0] - q_drone[1]*q_offset[1] - q_drone[2]*q_offset[2]
+        marker.pose.orientation.x = q_drone[3]*q_offset[0] + q_drone[0]*q_offset[3] + q_drone[1]*q_offset[2] - q_drone[2]*q_offset[1]
+        marker.pose.orientation.y = q_drone[3]*q_offset[1] - q_drone[0]*q_offset[2] + q_drone[1]*q_offset[3] + q_drone[2]*q_offset[0]
+        marker.pose.orientation.z = q_drone[3]*q_offset[2] + q_drone[0]*q_offset[1] - q_drone[1]*q_offset[0] + q_drone[2]*q_offset[3]
         
         # Size of the arrow
         marker.scale.x = 1.0  # Length
