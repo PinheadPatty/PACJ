@@ -90,18 +90,11 @@ class TfBroadcaster(Node):
         marker.pose.position.y = t.transform.translation.y
         marker.pose.position.z = t.transform.translation.z
         
-        # Rotate the marker 90 degrees around Z axis (yaw) so the arrow points North (Y axis) instead of East (X axis)
-        # Quaternion for 90 degree Z rotation: w=0.707, x=0, y=0, z=0.707
-        # We need to multiply the drone's orientation by this 90 degree offset
-        
-        q_drone = [t.transform.rotation.x, t.transform.rotation.y, t.transform.rotation.z, t.transform.rotation.w]
-        q_offset = [0.0, 0.0, 0.7071068, 0.7071068]
-        
-        # Quaternion multiplication: q_result = q_drone * q_offset
-        marker.pose.orientation.w = q_drone[3]*q_offset[3] - q_drone[0]*q_offset[0] - q_drone[1]*q_offset[1] - q_drone[2]*q_offset[2]
-        marker.pose.orientation.x = q_drone[3]*q_offset[0] + q_drone[0]*q_offset[3] + q_drone[1]*q_offset[2] - q_drone[2]*q_offset[1]
-        marker.pose.orientation.y = q_drone[3]*q_offset[1] - q_drone[0]*q_offset[2] + q_drone[1]*q_offset[3] + q_drone[2]*q_offset[0]
-        marker.pose.orientation.z = q_drone[3]*q_offset[2] + q_drone[0]*q_offset[1] - q_drone[1]*q_offset[0] + q_drone[2]*q_offset[3]
+        # Orient the arrow to match the drone's orientation in the odom frame
+        marker.pose.orientation.x = t.transform.rotation.x
+        marker.pose.orientation.y = t.transform.rotation.y
+        marker.pose.orientation.z = t.transform.rotation.z
+        marker.pose.orientation.w = t.transform.rotation.w
         
         # Size of the arrow
         marker.scale.x = 1.0  # Length
