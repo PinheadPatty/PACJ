@@ -167,7 +167,7 @@ class DroneDriver(Node):
             msg.position[2] = -ros_z  # Down = -Z
             
             # We don't control yaw in this simple example, just maintain current heading
-            msg.yaw = float('nan')
+            msg.yaw = float(self.current_yaw)
             
             # Ignore velocity and acceleration
             msg.velocity = [float('nan'), float('nan'), float('nan')]
