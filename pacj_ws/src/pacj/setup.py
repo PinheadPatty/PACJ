@@ -31,6 +31,7 @@ setup(
             'rover_driver = pacj.rover_driver:main',
             'drone_driver = pacj.drone_driver:main',
             'battery = pacj.battery:main',
+            'fake_landing_pad = pacj.fake_landing_pad:main',
         ],
     },
 )
