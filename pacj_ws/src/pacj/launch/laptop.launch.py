@@ -9,6 +9,20 @@ def generate_launch_description():
     rtabmap_pkg = get_package_share_directory('rtabmap_launch')
     rtabmap_launch_path = os.path.join(rtabmap_pkg, 'launch', 'rtabmap.launch.py')
 
+    vio_relay = Node(
+        package='pacj',
+        executable='vio_relay',
+        name='vio_relay',
+        output='screen'
+    )
+
+    tf_broadcaster = Node(
+        package='pacj',
+        executable='tf_broadcaster',
+        name='tf_broadcaster',
+        output='screen'
+    )
+
     # decompressor = Node(
     #     package='pacj',
     #     executable='decompressor',
@@ -19,10 +33,10 @@ def generate_launch_description():
     slam = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(rtabmap_launch_path),
         launch_arguments={
-            'rgb_topic': '/rover/color/image_raw',
-            'depth_topic': '/rover/depth/image_raw',
-            'camera_info_topic': '/rover/color/camera_info',
-            'frame_id': 'rover_link',          # This MUST match the camera's base frame
+            'rgb_topic': '/drone/color/image_raw',
+            'depth_topic': '/drone/depth/image_raw',
+            'camera_info_topic': '/drone/color/camera_info',
+            'frame_id': 'drone_link',          # This MUST match the camera's base frame
             'approx_sync': 'true',
             'approx_sync_max_interval': '0.1',
             'rgb_image_transport': 'compressed',
@@ -32,10 +46,29 @@ def generate_launch_description():
             'use_sim_time': 'false',
             'args': '--delete_db_on_start --Vis/MaxFeatures 600',
             'rtabmap_viz': 'false',
+            'Grid/3D': 'true', # Enable OctoMap Native 3D Grid
         }.items()
+    )
+
+    interactive_setpoint = Node(
+        package='pacj',
+        executable='interactive_setpoint',
+        name='interactive_setpoint',
+        output='screen'
+    )
+
+    drone_planner = Node(
+        package='pacj',
+        executable='drone_planner',
+        name='drone_planner',
+        output='screen'
     )
 
     return LaunchDescription([
         # decompressor,
+        vio_relay,
+        tf_broadcaster,
+        interactive_setpoint,
+        drone_planner,
         slam
     ])
