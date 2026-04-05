@@ -47,6 +47,7 @@ def generate_launch_description():
             'args': '--delete_db_on_start --Vis/MaxFeatures 600',
             'rtabmap_viz': 'false',
             'Grid/3D': 'true', # Enable OctoMap Native 3D Grid
+            'publish_tf_odom': 'false', # IMPORTANT: Let PX4 handle TF, not RTAB-Map
         }.items()
     )
 

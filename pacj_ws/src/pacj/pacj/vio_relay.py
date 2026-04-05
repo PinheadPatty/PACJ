@@ -26,6 +26,9 @@ class VioRelay(Node):
         self.odom_sub = self.create_subscription(
             Odometry, '/odom', self.odom_cb, 10) # default RTAB-map odom topic
 
+        # Add a timeout so we don't spam the console
+        self.last_log_time = self.get_clock().now()
+        
         self.get_logger().info("VIO Relay initialized.")
 
     def odom_cb(self, msg):
@@ -46,6 +49,12 @@ class VioRelay(Node):
         vio_msg.y = ros_x   # East = X
         vio_msg.z = -ros_z  # Down = -Z
         
+        # Log occasionally to prove we are receiving RTAB-Map data
+        now = self.get_clock().now()
+        if (now - self.last_log_time).nanoseconds > 2e9:  # Log every 2 seconds
+            self.get_logger().info(f"Relaying RTAB-Map Odom to PX4 -> X: {ros_x:.2f}, Y: {ros_y:.2f}, Z: {ros_z:.2f}")
+            self.last_log_time = now
+            
         # Convert quaternion from ENU to NED
         # 1. ENU to NED for positions: [x, y, z] -> [y, x, -z]
         # 2. For Quaternions [x, y, z, w], mapping is: 
