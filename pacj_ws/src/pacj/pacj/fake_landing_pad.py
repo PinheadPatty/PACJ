@@ -3,7 +3,7 @@ from rclpy.node import Node
 from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy, DurabilityPolicy
 
 from geometry_msgs.msg import PoseStamped
-from px4_msgs.msg import LandingTargetPose
+from px4_msgs.msg import LandingTargetPose, VehicleLocalPosition
 
 class FakeLandingPad(Node):
     def __init__(self):
@@ -25,15 +25,29 @@ class FakeLandingPad(Node):
         self.rover_pose_sub = self.create_subscription(
             PoseStamped, '/rover_pose', self.rover_pose_cb, 10)
 
+        # Subscriber to drone's current position to calculate relative distance
+        self.drone_pos_sub = self.create_subscription(
+            VehicleLocalPosition, '/fmu/out/vehicle_local_position', self.drone_pos_cb, qos_profile)
+
         # Current Rover Position in ROS ENU (defaults to origin if no rover is running)
         self.rover_x = 0.0
         self.rover_y = 0.0
         self.rover_z = 0.0
+        
+        # Current Drone Position in PX4 NED
+        self.drone_x = 0.0
+        self.drone_y = 0.0
+        self.drone_z = 0.0
 
         # Publish at 10Hz to keep Precision Landing mode happy
         self.timer = self.create_timer(0.1, self.timer_cb)
 
         self.get_logger().info("Fake Landing Pad tracking /rover_pose initialized.")
+
+    def drone_pos_cb(self, msg):
+        self.drone_x = msg.x
+        self.drone_y = msg.y
+        self.drone_z = msg.z
 
     def rover_pose_cb(self, msg):
         # Update the rover's position when we receive a new command
@@ -59,8 +73,13 @@ class FakeLandingPad(Node):
         msg.y_abs = float(self.rover_x)
         msg.z_abs = -float(self.rover_z)
 
-        # We are not providing relative position/velocity right now (just absolute)
-        msg.rel_pos_valid = False
+        # To trick PX4's estimator, we MUST provide the relative distance
+        # from the drone to the target.
+        msg.rel_pos_valid = True
+        msg.x_rel = msg.x_abs - self.drone_x
+        msg.y_rel = msg.y_abs - self.drone_y
+        msg.z_rel = msg.z_abs - self.drone_z
+
         msg.rel_vel_valid = False
 
         self.landing_target_pub.publish(msg)
