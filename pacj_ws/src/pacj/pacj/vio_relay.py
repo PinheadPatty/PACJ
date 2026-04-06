@@ -65,8 +65,12 @@ class VioRelay(Node):
     def odom_cb(self, msg):
         vio_msg = VehicleVisualOdometry()
         
-        vio_msg.timestamp = int(self.get_clock().now().nanoseconds / 1000)
-        vio_msg.timestamp_sample = vio_msg.timestamp
+        # PX4 EKF2 gets very picky about timestamps. Using the exact ROS time
+        # often causes "timeout" rejections if the ROS clock and PX4 clock drift.
+        # It is usually safer to use the PX4's internal clock time for the sample.
+        # Setting timestamp and timestamp_sample to 0 tells PX4 to timestamp it NOW.
+        vio_msg.timestamp = 0
+        vio_msg.timestamp_sample = 0
         
         # ROS 2 geometry_msgs uses ENU (East, North, Up)
         # PX4 uses NED (North, East, Down)
@@ -90,7 +94,7 @@ class VioRelay(Node):
         q = msg.pose.pose.orientation
         roll_enu, pitch_enu, yaw_enu = self.euler_from_quaternion(q.w, q.x, q.y, q.z)
         
-        # Convert ENU to NED
+        # Convert ENU Euler to NED Euler
         # In ENU: East is 0, North is pi/2
         # In NED: North is 0, East is pi/2
         roll_ned = roll_enu
@@ -128,6 +132,17 @@ class VioRelay(Node):
 
         # Coordinate frames
         vio_msg.local_frame = VehicleVisualOdometry.LOCAL_FRAME_NED
+        
+        # Set variance (uncertainty) so EKF2 knows how much to trust the data
+        # Lower values mean higher trust. Since we are testing VIO, we tell EKF2 to trust it highly.
+        # If left at 0 or NaN, EKF2 might reject the data.
+        vio_msg.position_variance = [0.1, 0.1, 0.1]
+        vio_msg.orientation_variance = [0.1, 0.1, 0.1]
+        vio_msg.velocity_variance = [0.1, 0.1, 0.1]
+        
+        # Finally, we must tell PX4 that this data is valid, otherwise it might ignore it
+        # Setting reset counters to 0 since we aren't doing any complex resets yet
+        vio_msg.reset_counter = 0
 
         self.vio_pub.publish(vio_msg)
 
