@@ -58,6 +58,19 @@ def generate_launch_description():
         output='screen'
     )
 
+    rviz_config_dir = os.path.join(
+        get_package_share_directory('pacj'),
+        'rviz',
+        'drone_config.rviz')
+
+    rviz_node = Node(
+        package='rviz2',
+        executable='rviz2',
+        name='rviz2',
+        arguments=['-d', rviz_config_dir],
+        output='screen'
+    )
+
     drone_planner = Node(
         package='pacj',
         executable='drone_planner',
@@ -71,5 +84,6 @@ def generate_launch_description():
         tf_broadcaster,
         interactive_setpoint,
         drone_planner,
-        slam
+        slam,
+        rviz_node
     ])
