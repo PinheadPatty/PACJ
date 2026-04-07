@@ -136,9 +136,9 @@ class VioRelay(Node):
         # Set variance (uncertainty) so EKF2 knows how much to trust the data
         # Lower values mean higher trust. Since we are testing VIO, we tell EKF2 to trust it highly.
         # If left at 0 or NaN, EKF2 might reject the data.
-        vio_msg.position_variance = [0.1, 0.1, 0.1]
-        vio_msg.orientation_variance = [0.1, 0.1, 0.1]
-        vio_msg.velocity_variance = [0.1, 0.1, 0.1]
+        vio_msg.position_variance = [0.3, 0.3, 0.3]
+        vio_msg.orientation_variance = [0.3, 0.3, 0.3]
+        vio_msg.velocity_variance = [0.3, 0.3, 0.3]
         
         # Finally, we must tell PX4 that this data is valid, otherwise it might ignore it
         # Setting reset counters to 0 since we aren't doing any complex resets yet
