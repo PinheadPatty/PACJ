@@ -1,150 +1,91 @@
-import math
 import rclpy
 from rclpy.node import Node
 from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy, DurabilityPolicy
+from rclpy.parameter import Parameter
+import math
 
 from nav_msgs.msg import Odometry
-from px4_msgs.msg import VehicleVisualOdometry
+from px4_msgs.msg import VehicleOdometry
 
 class VioRelay(Node):
     def __init__(self):
         super().__init__('vio_relay')
 
-        # Configure QoS profile for RX and TX (PX4 DDS uses Best Effort)
+        # 1. Force Simulation Time
+        self.set_parameters([Parameter('use_sim_time', Parameter.Type.BOOL, True)])
+
+        # 2. PX4 DDS Agent compatibility
         qos_profile = QoSProfile(
             reliability=ReliabilityPolicy.BEST_EFFORT,
-            durability=DurabilityPolicy.TRANSIENT_LOCAL,
+            durability=DurabilityPolicy.VOLATILE,
             history=HistoryPolicy.KEEP_LAST,
             depth=1
         )
 
-        # Publisher to PX4
         self.vio_pub = self.create_publisher(
-            VehicleVisualOdometry, '/fmu/in/vehicle_visual_odometry', qos_profile)
+            VehicleOdometry, '/fmu/in/vehicle_visual_odometry', qos_profile)
 
-        # Subscriber from RTAB-Map
+        # Ensure this matches your RTAB-Map output
         self.odom_sub = self.create_subscription(
-            Odometry, '/odom', self.odom_cb, 10) # default RTAB-map odom topic
+            Odometry, '/rtabmap/odom', self.odom_cb, 10)
 
-        # Add a timeout so we don't spam the console
         self.last_log_time = self.get_clock().now()
-        
-        self.get_logger().info("VIO Relay initialized.")
-
-    def euler_from_quaternion(self, w, x, y, z):
-        # roll (x)
-        sinr_cosp = 2 * (w * x + y * z)
-        cosr_cosp = 1 - 2 * (x * x + y * y)
-        roll = math.atan2(sinr_cosp, cosr_cosp)
-        # pitch (y)
-        sinp = 2 * (w * y - z * x)
-        if abs(sinp) >= 1:
-            pitch = math.copysign(math.pi / 2, sinp)
-        else:
-            pitch = math.asin(sinp)
-        # yaw (z)
-        siny_cosp = 2 * (w * z + x * y)
-        cosy_cosp = 1 - 2 * (y * y + z * z)
-        yaw = math.atan2(siny_cosp, cosy_cosp)
-        return roll, pitch, yaw
-
-    def quaternion_from_euler(self, roll, pitch, yaw):
-        cy = math.cos(yaw * 0.5)
-        sy = math.sin(yaw * 0.5)
-        cp = math.cos(pitch * 0.5)
-        sp = math.sin(pitch * 0.5)
-        cr = math.cos(roll * 0.5)
-        sr = math.sin(roll * 0.5)
-
-        w = cy * cp * cr + sy * sp * sr
-        x = cy * cp * sr - sy * sp * cr
-        y = sy * cp * sr + cy * sp * cr
-        z = sy * cp * cr - cy * sp * sr
-        return [w, x, y, z]
+        self.get_logger().info("VIO Relay [Audited] initialized. Mapping ENU -> NED...")
 
     def odom_cb(self, msg):
-        vio_msg = VehicleVisualOdometry()
-        
-        # PX4 EKF2 gets very picky about timestamps. Using the exact ROS time
-        # often causes "timeout" rejections if the ROS clock and PX4 clock drift.
-        # It is usually safer to use the PX4's internal clock time for the sample.
-        # Setting timestamp and timestamp_sample to 0 tells PX4 to timestamp it NOW.
-        vio_msg.timestamp = 0
-        vio_msg.timestamp_sample = 0
-        
-        # ROS 2 geometry_msgs uses ENU (East, North, Up)
-        # PX4 uses NED (North, East, Down)
-        
-        ros_x = float(msg.pose.pose.position.x)
-        ros_y = float(msg.pose.pose.position.y)
-        ros_z = float(msg.pose.pose.position.z)
-        
-        # Convert ENU to NED
-        vio_msg.x = ros_y   # North = Y
-        vio_msg.y = ros_x   # East = X
-        vio_msg.z = -ros_z  # Down = -Z
-        
-        # Log occasionally to prove we are receiving RTAB-Map data
-        now = self.get_clock().now()
-        if (now - self.last_log_time).nanoseconds > 2e9:  # Log every 2 seconds
-            self.get_logger().info(f"Relaying RTAB-Map Odom to PX4 -> X: {ros_x:.2f}, Y: {ros_y:.2f}, Z: {ros_z:.2f}")
-            self.last_log_time = now
+        try:
+            vio_msg = VehicleOdometry()
             
-        # Extract ENU Euler angles
-        q = msg.pose.pose.orientation
-        roll_enu, pitch_enu, yaw_enu = self.euler_from_quaternion(q.w, q.x, q.y, q.z)
-        
-        # Convert ENU Euler to NED Euler
-        # In ENU: East is 0, North is pi/2
-        # In NED: North is 0, East is pi/2
-        roll_ned = roll_enu
-        pitch_ned = -pitch_enu
-        yaw_ned = (math.pi / 2.0) - yaw_enu
-        
-        # Convert back to quaternion for PX4 (NED)
-        q_ned = self.quaternion_from_euler(roll_ned, pitch_ned, yaw_ned)
-        
-        vio_msg.q[0] = q_ned[0] # w
-        vio_msg.q[1] = q_ned[1] # x
-        vio_msg.q[2] = q_ned[2] # y
-        vio_msg.q[3] = q_ned[3] # z
+            # Timestamp in microseconds (SITL requirement)
+            current_time = int(self.get_clock().now().nanoseconds / 1000)
+            vio_msg.timestamp = current_time
+            vio_msg.timestamp_sample = current_time
+            
+            # 1. POSITION CONVERSION (ENU -> NED)
+            # ROS X (Forward/East) -> PX4 X (North)
+            # ROS Y (Left/North)   -> PX4 Y (East)
+            # ROS Z (Up)           -> PX4 Z (Down)
+            vio_msg.position = [
+                float(msg.pose.pose.position.x),
+                float(-msg.pose.pose.position.y),
+                float(-msg.pose.pose.position.z)
+            ]
+            
+            # 2. ORIENTATION CONVERSION (Corrected ENU -> NED)
+            # Mapping components to align World-North and World-East
+            q = msg.pose.pose.orientation
+            vio_msg.q = [
+                float(q.w), 
+                float(q.y),  # Map North
+                float(q.x),  # Map East
+                float(-q.z)  # Invert Up to Down
+            ]
 
-        # Velocity ENU to NED
-        ros_vx = float(msg.twist.twist.linear.x)
-        ros_vy = float(msg.twist.twist.linear.y)
-        ros_vz = float(msg.twist.twist.linear.z)
-        
-        vio_msg.vx = ros_vy
-        vio_msg.vy = ros_vx
-        vio_msg.vz = -ros_vz
+            # 3. VELOCITY (Set to NaN for smoother initial testing)
+            # This forces PX4 to derive velocity from position, stopping the 'twitch'
+            vio_msg.velocity = [float('nan')] * 3
+            vio_msg.angular_velocity = [float('nan')] * 3
 
-        # Angular Velocity ENU to NED
-        ros_wx = float(msg.twist.twist.angular.x)
-        ros_wy = float(msg.twist.twist.angular.y)
-        ros_wz = float(msg.twist.twist.angular.z)
-        
-        vio_msg.rollspeed = ros_wy
-        vio_msg.pitchspeed = ros_wx
-        vio_msg.yawspeed = -ros_wz
+            # 4. Frame Definitions & Trust
+            vio_msg.pose_frame = VehicleOdometry.POSE_FRAME_NED
+            vio_msg.velocity_frame = VehicleOdometry.VELOCITY_FRAME_BODY_FRD
+            
+            # High trust values (low variance)
+            vio_msg.position_variance = [0.1, 0.1, 0.1]
+            vio_msg.orientation_variance = [0.05, 0.05, 0.05]
+            
+            vio_msg.reset_counter = 0
+            
+            self.vio_pub.publish(vio_msg)
 
-        # Velocity frame is body frame
-        vio_msg.velocity_frame = VehicleVisualOdometry.VELOCITY_FRAME_BODY_FRD
+            # Log every 2 seconds
+            now = self.get_clock().now()
+            if (now - self.last_log_time).nanoseconds > 2e9:
+                self.get_logger().info(f"Relaying VIO @ {vio_msg.position[0]:.2f}, {vio_msg.position[1]:.2f}")
+                self.last_log_time = now
 
-        # Coordinate frames
-        vio_msg.local_frame = VehicleVisualOdometry.LOCAL_FRAME_NED
-        
-        # Set variance (uncertainty) so EKF2 knows how much to trust the data
-        # Lower values mean higher trust. Since we are testing VIO, we tell EKF2 to trust it highly.
-        # If left at 0 or NaN, EKF2 might reject the data.
-        vio_msg.position_variance = [0.01, 0.01, 0.01]
-        vio_msg.orientation_variance = [0.01, 0.01, 0.01]
-        vio_msg.velocity_variance = [0.01, 0.01, 0.01]
-        
-        # Finally, we must tell PX4 that this data is valid, otherwise it might ignore it
-        # Setting reset counters to 0 since we aren't doing any complex resets yet
-        vio_msg.reset_counter = 0
-
-        self.vio_pub.publish(vio_msg)
+        except Exception as e:
+            self.get_logger().error(f"Error in odom_cb: {str(e)}")
 
 def main(args=None):
     rclpy.init(args=args)

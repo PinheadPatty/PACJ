@@ -9,26 +9,24 @@ def generate_launch_description():
     rtabmap_pkg = get_package_share_directory('rtabmap_launch')
     rtabmap_launch_path = os.path.join(rtabmap_pkg, 'launch', 'rtabmap.launch.py')
 
+    # Ensure all custom nodes use simulation time
+    sim_time_param = {'use_sim_time': True}
+
     vio_relay = Node(
         package='pacj',
         executable='vio_relay',
         name='vio_relay',
-        output='screen'
+        output='screen',
+        parameters=[sim_time_param]
     )
 
     tf_broadcaster = Node(
         package='pacj',
         executable='tf_broadcaster',
         name='tf_broadcaster',
-        output='screen'
+        output='screen',
+        parameters=[sim_time_param]
     )
-
-    # decompressor = Node(
-    #     package='pacj',
-    #     executable='decompressor',
-    #     name='decompressor',
-    #     output='screen'
-    # )
 
     slam = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(rtabmap_launch_path),
@@ -55,7 +53,8 @@ def generate_launch_description():
         package='pacj',
         executable='interactive_setpoint',
         name='interactive_setpoint',
-        output='screen'
+        output='screen',
+        parameters=[sim_time_param]
     )
 
     rviz_config_dir = os.path.join(
@@ -68,18 +67,19 @@ def generate_launch_description():
         executable='rviz2',
         name='rviz2',
         arguments=['-d', rviz_config_dir],
-        output='screen'
+        output='screen',
+        parameters=[sim_time_param]
     )
 
     drone_planner = Node(
         package='pacj',
         executable='drone_planner',
         name='drone_planner',
-        output='screen'
+        output='screen',
+        parameters=[sim_time_param]
     )
 
     return LaunchDescription([
-        # decompressor,
         vio_relay,
         tf_broadcaster,
         interactive_setpoint,
