@@ -31,7 +31,32 @@ def generate_launch_description():
         output='screen'
     )
 
+    pi_camera = Node(
+        package='v4l2_camera',
+        executable='v4l2_camera_node',
+        name='pi_camera',
+        parameters=[{
+            'image_size': [1920, 1080],
+        }]
+    )
+
+    aruco_node = Node(
+        package='pacj',
+        executable='aruco_landing_target',
+        name='aruco_landing_target',
+        output='screen',
+        parameters=[{
+            'marker_size': 0.046
+        }],
+        remappings=[
+            ('/camera/image_raw', '/image_raw'),
+            ('/camera/camera_info', '/camera_info')
+        ]
+    )
+
     return LaunchDescription([
         drone_camera,
         drone_driver,
+        pi_camera,
+        aruco_node,
     ])
