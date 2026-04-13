@@ -38,6 +38,7 @@ setup(
             'interactive_setpoint = pacj.interactive_setpoint:main',
             'drone_planner = pacj.drone_planner:main',
             'aruco_landing_target = pacj.aruco_landing_target:main',
+            'offboard_controller = pacj.offboard_controller:main',
         ],
     },
 )

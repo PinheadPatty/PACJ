@@ -24,13 +24,6 @@ def generate_launch_description():
         }.items()
     )
 
-    drone_driver = Node(
-        package='pacj',
-        executable='drone_driver',
-        name='drone_driver',
-        output='screen'
-    )
-
     pi_camera = Node(
         package='v4l2_camera',
         executable='v4l2_camera_node',
@@ -40,23 +33,22 @@ def generate_launch_description():
         }]
     )
 
-    aruco_node = Node(
+    offboard_controller = Node(
         package='pacj',
-        executable='aruco_landing_target',
-        name='aruco_landing_target',
+        executable='offboard_controller',
+        name='offboard_controller',
         output='screen',
         parameters=[{
             'marker_size': 0.046
         }],
         remappings=[
-            ('/camera/image_raw', '/image_raw'),
-            ('/camera/camera_info', '/camera_info')
+            ('/camera_info', '/camera/camera_info'),
+            ('/image_raw', '/camera/image_raw')
         ]
     )
 
     return LaunchDescription([
         drone_camera,
-        drone_driver,
+        offboard_controller,
         pi_camera,
-        aruco_node,
     ])
