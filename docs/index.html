@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="PACJ — An open-source ROS 2 framework for autonomous drone and rover coordination: mapping, localization, and module manipulation." />
+  <title>PACJ — Autonomous Robotics Framework</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+  <!-- ── Navigation ── -->
+  <nav>
+    <div class="nav-inner">
+      <span class="nav-logo">PA<span>CJ</span></span>
+      <ul class="nav-links">
+        <li><a href="#features">Features</a></li>
+        <li><a href="#architecture">Architecture</a></li>
+        <li><a href="#stack">Tech Stack</a></li>
+        <li><a href="https://github.com/PinheadPatty/PACJ" target="_blank" rel="noopener">GitHub ↗</a></li>
+      </ul>
+    </div>
+  </nav>
+
+  <!-- ── Hero ── -->
+  <header>
+    <div class="hero">
+      <div class="hero-badge">Open Source · ROS 2 · Python</div>
+      <h1>Autonomous <span>Drone &amp; Rover</span><br>Coordination</h1>
+      <p class="hero-subtitle">
+        PACJ is an open-source software framework built on ROS 2 for managing
+        autonomous robotic tasks — including drone flight, ground rover navigation,
+        3-D mapping, localization, and module manipulation.
+      </p>
+      <div class="hero-ctas">
+        <a class="btn btn-primary" href="https://github.com/PinheadPatty/PACJ" target="_blank" rel="noopener">
+          View on GitHub
+        </a>
+        <a class="btn btn-secondary" href="#features">
+          Learn More
+        </a>
+      </div>
+    </div>
+  </header>
+
+  <hr class="divider" />
+
+  <!-- ── Features ── -->
+  <section id="features">
+    <h2 class="section-title">What PACJ Does</h2>
+    <p class="section-subtitle">A unified framework that bridges air and ground autonomy.</p>
+    <div class="feature-grid">
+      <div class="feature-card">
+        <div class="feature-icon">🚁</div>
+        <h3>Drone Control</h3>
+        <p>Full PX4-based flight control with offboard setpoint planning, battery monitoring, and autonomous mission execution.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">🤖</div>
+        <h3>Rover Navigation</h3>
+        <p>Ground rover driver with servo control, servo-based locomotion, and communication health checks over the robot network.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">🗺️</div>
+        <h3>3-D Mapping</h3>
+        <p>SLAM-driven occupancy mapping using depth data from the Orbbec G330 RGB-D camera and ROS 2 nav2 integration.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">📍</div>
+        <h3>Localization</h3>
+        <p>Visual-inertial odometry relay and TF broadcasting keep all agents localised within a shared map frame in real time.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">🔲</div>
+        <h3>Module Manipulation</h3>
+        <p>High-level planner coordinates grabbing and placement of physical modules, enabling collaborative construction tasks.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">📷</div>
+        <h3>RGB-D Vision</h3>
+        <p>Orbbec ROS 2 SDK integration provides live point clouds and compressed image streams to every node in the graph.</p>
+      </div>
+    </div>
+  </section>
+
+  <hr class="divider" />
+
+  <!-- ── Architecture ── -->
+  <section id="architecture">
+    <h2 class="section-title">System Architecture</h2>
+    <p class="section-subtitle">Three cooperating agents share a single ROS 2 topic graph.</p>
+    <div class="arch-grid">
+      <div class="arch-card">
+        <div class="arch-label">Agent</div>
+        <h4>Drone</h4>
+        <p>PX4-powered aerial platform. Runs <code>drone_driver</code> and <code>drone_planner</code> nodes.</p>
+      </div>
+      <div class="arch-card">
+        <div class="arch-label">Agent</div>
+        <h4>Rover</h4>
+        <p>Ground vehicle running <code>rover_driver</code> with servo-based actuation and a ping health monitor.</p>
+      </div>
+      <div class="arch-card">
+        <div class="arch-label">Operator</div>
+        <h4>Laptop</h4>
+        <p>Runs RViz 2, visualises the live map, and provides the operator interface via <code>interactive_setpoint</code>.</p>
+      </div>
+      <div class="arch-card">
+        <div class="arch-label">Perception</div>
+        <h4>Orbbec G330</h4>
+        <p>Depth camera providing point clouds, IMU data, and compressed RGB streams to the ROS 2 graph.</p>
+      </div>
+    </div>
+  </section>
+
+  <hr class="divider" />
+
+  <!-- ── Tech Stack ── -->
+  <section id="stack">
+    <h2 class="section-title">Technology Stack</h2>
+    <p class="section-subtitle">Built on proven robotics infrastructure.</p>
+    <div class="stack-list">
+      <span class="stack-tag">ROS 2 Humble</span>
+      <span class="stack-tag">Python 3</span>
+      <span class="stack-tag">PX4 Autopilot</span>
+      <span class="stack-tag">px4_msgs</span>
+      <span class="stack-tag">Orbbec ROS 2 SDK</span>
+      <span class="stack-tag">cv_bridge</span>
+      <span class="stack-tag">sensor_msgs</span>
+      <span class="stack-tag">geometry_msgs</span>
+      <span class="stack-tag">nav2 / SLAM</span>
+      <span class="stack-tag">RViz 2</span>
+      <span class="stack-tag">ament_python</span>
+      <span class="stack-tag">GeographicLib</span>
+    </div>
+  </section>
+
+  <hr class="divider" />
+
+  <!-- ── Footer ── -->
+  <footer>
+    <span>© 2024 PACJ Project</span>
+    <span>
+      <a href="https://github.com/PinheadPatty/PACJ" target="_blank" rel="noopener">GitHub</a>
+      &nbsp;·&nbsp;
+      <a href="https://github.com/PinheadPatty/PACJ/blob/main/LICENSE" target="_blank" rel="noopener">License</a>
+    </span>
+  </footer>
+
+</body>
+</html>
