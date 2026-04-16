@@ -263,10 +263,19 @@ class RoverDriver(Node):
             self.groupSyncWrite.addParam(2, self.get_4byte_param(-right))
             self.groupSyncWrite.txPacket()
 
-    # TO OPEN:  ros2 topic pub --once /coupling std_msgs/String "data: '0'"
-    # TO CLOSE: ros2 topic pub --once /coupling std_msgs/String "data: '1'"
-    # TO RELAX:  ros2 topic pub --once /coupling std_msgs/String "data: 'relax'"
-    # CAPTURE OPEN:  ros2 topic pub --once /coupling std_msgs/String "data: 'set_open'"
+    # Step 1: TO RELAX: 
+    # ros2 topic pub --once /coupling std_msgs/String "data: 'relax'"
+
+    # Step 2: CAPTURE OPEN by hand:
+    # ros2 topic pub --once /coupling std_msgs/String "data: 'set_open'"
+
+    # Step 3: TO OPEN:  
+    # ros2 topic pub --once /coupling std_msgs/String "data: '0'"
+
+    # Step 4: TO CLOSE: 
+    # ros2 topic pub --once /coupling std_msgs/String "data: '1'"
+    
+    
     def coupling_callback(self, msg):
         command = msg.data.lower().strip()
 
