@@ -135,15 +135,15 @@
       <div class="table-wrap">
         <table class="req-table">
           <thead>
-            <tr><th>ID</th><th>Description</th><th>Priority</th></tr>
+            <tr><th>ID</th><th>Description</th></tr>
           </thead>
           <tbody>
-            <tr><td>ASMP-01</td><td>System will not experience significant water exposure.</td><td>Assumed</td></tr>
-            <tr><td>ASMP-02</td><td>System operates indoors; wind conditions above 1 mph are out of scope.</td><td>Assumed</td></tr>
-            <tr><td>ASMP-03</td><td>System does not operate around dense mid-air obstacles outside planned scenarios.</td><td>Assumed</td></tr>
-            <tr><td>ASMP-04</td><td>System does not operate around dynamic ground obstacles outside test constraints.</td><td>Assumed</td></tr>
-            <tr><td>ASMP-05</td><td>No rough terrain beyond design assumptions (slippery/rocky/holes or slope beyond 10 degrees).</td><td>Assumed</td></tr>
-            <tr><td>ASMP-06</td><td>Operation assumes clear visibility and normal indoor lighting.</td><td>Assumed</td></tr>
+            <tr><td>ASMP-01</td><td>System will not experience significant water exposure.</td></tr>
+            <tr><td>ASMP-02</td><td>System operates indoors; wind conditions above 1 mph are out of scope.</td></tr>
+            <tr><td>ASMP-03</td><td>System does not operate around dense mid-air obstacles outside planned scenarios.</td></tr>
+            <tr><td>ASMP-04</td><td>System does not operate around dynamic ground obstacles outside test constraints.</td></tr>
+            <tr><td>ASMP-05</td><td>No rough terrain beyond design assumptions (slippery/rocky/holes or slope beyond 10 degrees).</td></tr>
+            <tr><td>ASMP-06</td><td>Operation assumes clear visibility and normal indoor lighting.</td></tr>
           </tbody>
         </table>
       </div>
@@ -413,27 +413,102 @@
 
   <section id="architecture">
     <h2 class="section-title">System Architecture</h2>
-    <p class="section-subtitle">Three cooperating agents share a ROS 2 graph for command, sensing, and feedback.</p>
+    <p class="section-subtitle">Detailed subsystem architecture across agents, sensing, planning, and operator stack.</p>
     <div class="arch-grid">
       <div class="arch-card">
         <div class="arch-label">Agent</div>
         <h4>Drone</h4>
-        <p>Runs aerial control logic, perception streams, and payload-aware coupling behavior.</p>
+        <p>Runs PX4-facing control, payload-aware flight behavior, and autonomous coupling/transfer execution.</p>
       </div>
       <div class="arch-card">
         <div class="arch-label">Agent</div>
         <h4>Rover</h4>
-        <p>Runs ground mobility and coupler actuation while serving local manipulation tasks.</p>
+        <p>Runs ground locomotion, coupler actuation, and local mission continuation after drone redeployment.</p>
       </div>
       <div class="arch-card">
         <div class="arch-label">Operator</div>
         <h4>Laptop</h4>
-        <p>Hosts command interface, visualization, and mode transitions between teleop and autonomy.</p>
+        <p>Hosts teleop/autonomy controls, mission supervision, and real-time video/map visualization.</p>
       </div>
       <div class="arch-card">
-        <div class="arch-label">Perception</div>
-        <h4>Orbbec RGB-D</h4>
-        <p>Provides depth/color data for mapping, localization, and coupling alignment.</p>
+        <div class="arch-label">Middleware</div>
+        <h4>ROS 2 Graph</h4>
+        <p>Shared topics/services connect drone, rover, and laptop for command, telemetry, maps, and sensor streams.</p>
+      </div>
+      <div class="arch-card">
+        <div class="arch-label">Estimation</div>
+        <h4>TF + VIO Relay</h4>
+        <p>Frame broadcasting and odometry relays align all agents into a shared coordinate context.</p>
+      </div>
+      <div class="arch-card">
+        <div class="arch-label">Mapping</div>
+        <h4>Depth Pipeline</h4>
+        <p>Compressed depth feeds decompression and SLAM/mapping nodes for shared environment reconstruction.</p>
+      </div>
+      <div class="arch-card">
+        <div class="arch-label">Manipulation</div>
+        <h4>Coupling Subsystem</h4>
+        <p>Soft/hard coupling mechanics and servo lock control enable pickup, transport, and release cycles.</p>
+      </div>
+      <div class="arch-card">
+        <div class="arch-label">Safety</div>
+        <h4>E-Stop + Failsafe</h4>
+        <p>Global stop path, link-loss handling, and controlled landing/halt behavior protect hardware and operators.</p>
+      </div>
+    </div>
+
+    <div class="detail-card">
+      <h3>Perception and Sensor Topology</h3>
+      <div class="table-wrap">
+        <table class="req-table">
+          <thead>
+            <tr><th>Subsystem</th><th>Sensor</th><th>Role</th><th>Data / Interface</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Drone Perception</td>
+              <td>Orbbec Gemini RGB-D (Drone)</td>
+              <td>Front-view color+depth for navigation, mapping, and scene understanding.</td>
+              <td>ROS topics from drone camera namespace (color/depth + camera info).</td>
+            </tr>
+            <tr>
+              <td>Rover Perception</td>
+              <td>Orbbec Gemini RGB-D (Rover)</td>
+              <td>Ground-view depth perception for obstacle awareness and local map updates.</td>
+              <td>ROS topics from rover camera namespace (color/depth + camera info).</td>
+            </tr>
+            <tr>
+              <td>Drone Coupling Vision</td>
+              <td>Auxiliary Downward Camera (RPi Camera V2 class)</td>
+              <td>Rover-top detection and close-range alignment during coupling/decoupling maneuvers.</td>
+              <td>Bottom-camera stream used by alignment and operator feedback loop.</td>
+            </tr>
+            <tr>
+              <td>Auxiliary Vision Suite</td>
+              <td>Additional top/bottom mission cameras</td>
+              <td>Supplemental perspective views used in testing, monitoring, and coupling verification.</td>
+              <td>Additional image streams integrated into operator and validation workflows.</td>
+            </tr>
+            <tr>
+              <td>Rover Range Sensing</td>
+              <td>LiDAR Scanner</td>
+              <td>Horizon scan and obstacle boundary detection to support safe local navigation.</td>
+              <td>Range/scan stream fused with camera-based perception.</td>
+            </tr>
+            <tr>
+              <td>Inertial + Motion Sensing</td>
+              <td>IMU, wheel encoders, auxiliary short-range sensors</td>
+              <td>Stabilization, motion estimation, and short-range safety checks.</td>
+              <td>Used in state estimation and control loops with visual/depth data.</td>
+            </tr>
+            <tr>
+              <td>Perception Processing</td>
+              <td>Depth decompression + SLAM integration</td>
+              <td>Converts compressed depth streams and feeds mapping/localization pipeline.</td>
+              <td>Bridges sensor transport into mapping and operator visualization outputs.</td>
+            </tr>
+          </tbody>
+        </table>
       </div>
     </div>
   </section>
@@ -449,6 +524,8 @@
       <span class="stack-tag">PX4 Autopilot</span>
       <span class="stack-tag">px4_msgs</span>
       <span class="stack-tag">Orbbec ROS 2 SDK</span>
+      <span class="stack-tag">LiDAR</span>
+      <span class="stack-tag">RPi Camera V2</span>
       <span class="stack-tag">Dynamixel SDK</span>
       <span class="stack-tag">geometry_msgs</span>
       <span class="stack-tag">sensor_msgs</span>
