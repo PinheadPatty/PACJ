@@ -1,0 +1,6 @@
+# Custom Real PX4 Parameters
+# Format: <type> <name> <value>
+# 1 = Int32, 2 = Float
+# Example:
+# 2 MC_ROLL_P 6.5
+# 2 MC_PITCH_P 6.5
