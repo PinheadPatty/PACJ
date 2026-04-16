@@ -1,4 +1,4 @@
-/* PACJ — Global Styles */
+/* PACJ - Global Styles (aligned with previous portfolio theme) */
 
 *, *::before, *::after {
   box-sizing: border-box;
@@ -18,7 +18,7 @@
   --font-sans: 'Segoe UI', system-ui, -apple-system, sans-serif;
   --font-mono: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
   --radius: 8px;
-  --max-width: 960px;
+  --max-width: 980px;
 }
 
 html {
@@ -43,7 +43,15 @@ a:hover {
   text-decoration: underline;
 }
 
-/* ── Nav ── */
+code {
+  font-family: var(--font-mono);
+  background: rgba(88, 166, 255, 0.08);
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  padding: 0.05rem 0.35rem;
+}
+
+/* Nav */
 nav {
   position: sticky;
   top: 0;
@@ -57,10 +65,11 @@ nav {
   max-width: var(--max-width);
   margin: 0 auto;
   padding: 0 1.5rem;
-  height: 56px;
+  min-height: 56px;
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 1rem;
 }
 
 .nav-logo {
@@ -76,8 +85,10 @@ nav {
 
 .nav-links {
   display: flex;
-  gap: 1.5rem;
+  gap: 1rem;
   list-style: none;
+  flex-wrap: wrap;
+  justify-content: flex-end;
 }
 
 .nav-links a {
@@ -92,7 +103,7 @@ nav {
   text-decoration: none;
 }
 
-/* ── Hero ── */
+/* Hero */
 .hero {
   padding: 6rem 1.5rem 4rem;
   text-align: center;
@@ -115,7 +126,7 @@ nav {
 }
 
 .hero h1 {
-  font-size: clamp(2.4rem, 6vw, 3.6rem);
+  font-size: clamp(2.2rem, 6vw, 3.6rem);
   font-weight: 800;
   letter-spacing: -0.02em;
   line-height: 1.1;
@@ -130,9 +141,9 @@ nav {
 }
 
 .hero-subtitle {
-  font-size: 1.15rem;
+  font-size: 1.08rem;
   color: var(--color-text-muted);
-  max-width: 640px;
+  max-width: 700px;
   margin: 0 auto 2.5rem;
 }
 
@@ -173,7 +184,7 @@ nav {
   border: 1px solid var(--color-border);
 }
 
-/* ── Sections ── */
+/* Sections */
 section {
   padding: 4rem 1.5rem;
   max-width: var(--max-width);
@@ -181,17 +192,17 @@ section {
 }
 
 .section-title {
-  font-size: 1.6rem;
+  font-size: 1.75rem;
   font-weight: 700;
   margin-bottom: 0.5rem;
 }
 
 .section-subtitle {
   color: var(--color-text-muted);
-  margin-bottom: 2.5rem;
+  margin-bottom: 2rem;
 }
 
-/* ── Feature grid ── */
+/* Feature grid (original style preserved) */
 .feature-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
@@ -226,7 +237,85 @@ section {
   font-size: 0.9rem;
 }
 
-/* ── Architecture section ── */
+/* Detailed content blocks (new, style-matched) */
+.detail-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 1.1rem;
+}
+
+.detail-card {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  padding: 1.35rem;
+  margin-bottom: 1.1rem;
+}
+
+.detail-card h3 {
+  font-size: 1.05rem;
+  margin-bottom: 0.6rem;
+}
+
+.detail-card p {
+  color: var(--color-text-muted);
+  font-size: 0.94rem;
+  margin-bottom: 0.75rem;
+}
+
+.detail-card p:last-child {
+  margin-bottom: 0;
+}
+
+.detail-list {
+  color: var(--color-text-muted);
+  padding-left: 1.1rem;
+}
+
+.detail-list li {
+  margin-bottom: 0.45rem;
+}
+
+.detail-list.ordered {
+  padding-left: 1.25rem;
+}
+
+.table-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+}
+
+.req-table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 660px;
+}
+
+.req-table th,
+.req-table td {
+  border-bottom: 1px solid var(--color-border);
+  padding: 0.6rem 0.75rem;
+  text-align: left;
+  vertical-align: top;
+  font-size: 0.87rem;
+}
+
+.req-table th {
+  background: rgba(88, 166, 255, 0.09);
+  color: var(--color-text);
+  font-weight: 600;
+}
+
+.req-table td {
+  color: var(--color-text-muted);
+}
+
+.req-table tr:last-child td {
+  border-bottom: none;
+}
+
+/* Architecture section */
 .arch-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
@@ -265,7 +354,40 @@ section {
   margin-bottom: 0.5rem;
 }
 
-/* ── Stack section ── */
+/* Video grid */
+.video-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 1rem;
+}
+
+.video-card {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  padding: 1rem;
+}
+
+.video-card h3 {
+  font-size: 1rem;
+  margin-bottom: 0.35rem;
+}
+
+.video-card p {
+  color: var(--color-text-muted);
+  font-size: 0.88rem;
+  margin-bottom: 0.7rem;
+}
+
+.video-card iframe {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  background: #0b0f14;
+}
+
+/* Stack section */
 .stack-list {
   display: flex;
   flex-wrap: wrap;
@@ -282,7 +404,7 @@ section {
   color: var(--color-text-muted);
 }
 
-/* ── Divider ── */
+/* Divider */
 .divider {
   border: none;
   border-top: 1px solid var(--color-border);
@@ -290,7 +412,7 @@ section {
   margin: 0 auto;
 }
 
-/* ── Footer ── */
+/* Footer */
 footer {
   padding: 2.5rem 1.5rem;
   max-width: var(--max-width);
@@ -310,4 +432,34 @@ footer a {
 
 footer a:hover {
   color: var(--color-accent);
+}
+
+/* Responsive */
+@media (max-width: 920px) {
+  .nav-inner {
+    padding-top: 0.55rem;
+    padding-bottom: 0.55rem;
+  }
+
+  .hero {
+    padding-top: 4.7rem;
+  }
+}
+
+@media (max-width: 700px) {
+  .section-title {
+    font-size: 1.5rem;
+  }
+
+  .hero-subtitle {
+    font-size: 1rem;
+  }
+
+  .video-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .req-table {
+    min-width: 560px;
+  }
 }
