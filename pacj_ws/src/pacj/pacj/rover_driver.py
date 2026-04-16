@@ -27,7 +27,8 @@ class RoverDriver(Node):
         # Coupling Settings (ID 3)
         self.COUPLE_ID    = 3
         self.POS_OPEN     = 2570
-        self.POS_CLOSED   = 3500
+        self.CLOSE_OFFSET = int(self.declare_parameter('coupler_close_offset', 1000).value)
+        self.POS_CLOSED   = self.POS_OPEN + self.CLOSE_OFFSET
         self.COUPLE_SPEED = 30      # Set once at startup (Steady crawl)
         self.SAFE_PWM     = 250     # Power cap to protect gears
         self.CALIBRATION_FILE = Path(
@@ -73,10 +74,11 @@ class RoverDriver(Node):
         self.get_logger().info(
             "Coupler commands on /coupling: '0' (open), '1' (close), "
             "'open', 'close', any value in [0,1], 'relax', "
-            "'set_open', 'set_close', 'status'"
+            "'set_open', 'status'"
         )
         self.get_logger().info(
-            f"Current coupler endpoints: open={self.POS_OPEN}, close={self.POS_CLOSED}"
+            f"Current coupler endpoints: open={self.POS_OPEN}, "
+            f"close={self.POS_CLOSED} (offset={self.CLOSE_OFFSET})"
         )
 
     def setup_hardware(self):
@@ -112,17 +114,12 @@ class RoverDriver(Node):
             with self.CALIBRATION_FILE.open('r', encoding='utf-8') as file:
                 data = json.load(file)
 
-            open_pos = int(data.get('open_position', data.get('pos_open')))
-            close_pos = int(data.get('closed_position', data.get('pos_closed')))
-
-            if open_pos == close_pos:
-                raise ValueError("Open and close positions are identical.")
-
+            open_pos = int(data.get('open_position', data.get('pos_open', self.POS_OPEN)))
             self.POS_OPEN = open_pos
-            self.POS_CLOSED = close_pos
+            self.recompute_closed_position()
             self.get_logger().info(
                 f"Loaded coupler calibration from {self.CALIBRATION_FILE} "
-                f"(open={self.POS_OPEN}, close={self.POS_CLOSED})"
+                f"(open={self.POS_OPEN}, close={self.POS_CLOSED}, offset={self.CLOSE_OFFSET})"
             )
         except Exception as exc:
             self.get_logger().warn(
@@ -137,17 +134,20 @@ class RoverDriver(Node):
                 json.dump(
                     {
                         'open_position': int(self.POS_OPEN),
-                        'closed_position': int(self.POS_CLOSED),
+                        'close_offset': int(self.CLOSE_OFFSET),
                     },
                     file,
                     indent=2,
                 )
             self.get_logger().info(
                 f"Saved coupler calibration to {self.CALIBRATION_FILE} "
-                f"(open={self.POS_OPEN}, close={self.POS_CLOSED})"
+                f"(open={self.POS_OPEN}, close={self.POS_CLOSED}, offset={self.CLOSE_OFFSET})"
             )
         except Exception as exc:
             self.get_logger().error(f"Failed to save coupler calibration: {exc}")
+
+    def recompute_closed_position(self):
+        self.POS_CLOSED = self.POS_OPEN + self.CLOSE_OFFSET
 
     def read_coupler_position(self):
         with self.comm_lock:
@@ -174,26 +174,24 @@ class RoverDriver(Node):
                 self.port_handler, self.COUPLE_ID, self.ADDR_TORQUE_ENABLE, 1 if enabled else 0
             )
 
-    def capture_coupler_endpoint(self, endpoint_name):
+    def capture_coupler_open(self):
         position = self.read_coupler_position()
         if position is None:
             return
 
-        if endpoint_name == 'open':
-            self.POS_OPEN = position
-        else:
-            self.POS_CLOSED = position
-
+        self.POS_OPEN = position
+        self.recompute_closed_position()
         self.save_coupler_calibration()
         self.get_logger().info(
-            f"Captured {endpoint_name.upper()} endpoint at position {position}"
+            f"Captured OPEN endpoint at {position}; CLOSE auto-set to {self.POS_CLOSED} "
+            f"(offset={self.CLOSE_OFFSET})"
         )
 
     def get_target_position_from_command(self, command):
         if self.POS_OPEN == self.POS_CLOSED:
             self.get_logger().error(
                 "Open and close endpoints are identical. Recalibrate with "
-                "'relax', 'set_open', and 'set_close'."
+                "'relax' then 'set_open'."
             )
             return None, None
 
@@ -239,7 +237,7 @@ class RoverDriver(Node):
         self.set_torque(False)
         self.get_logger().info(
             "Calibration mode: torque OFF for 30s. Move coupler by hand, then send "
-            "'set_open' or 'set_close'."
+            "'set_open'."
         )
 
         for i in range(duration_sec):
@@ -269,7 +267,6 @@ class RoverDriver(Node):
     # TO CLOSE: ros2 topic pub --once /coupling std_msgs/String "data: '1'"
     # TO RELAX:  ros2 topic pub --once /coupling std_msgs/String "data: 'relax'"
     # CAPTURE OPEN:  ros2 topic pub --once /coupling std_msgs/String "data: 'set_open'"
-    # CAPTURE CLOSE: ros2 topic pub --once /coupling std_msgs/String "data: 'set_close'"
     def coupling_callback(self, msg):
         command = msg.data.lower().strip()
 
@@ -278,16 +275,20 @@ class RoverDriver(Node):
             return
 
         if command == 'set_open':
-            self.capture_coupler_endpoint('open')
+            self.capture_coupler_open()
             return
 
         if command == 'set_close':
-            self.capture_coupler_endpoint('close')
+            self.get_logger().warn(
+                "set_close is deprecated. Close is auto-computed as open + offset. "
+                "Use 'set_open' only."
+            )
             return
 
         if command == 'status':
             self.get_logger().info(
-                f"Coupler endpoints: open={self.POS_OPEN}, close={self.POS_CLOSED}"
+                f"Coupler endpoints: open={self.POS_OPEN}, close={self.POS_CLOSED}, "
+                f"offset={self.CLOSE_OFFSET}"
             )
             return
 
