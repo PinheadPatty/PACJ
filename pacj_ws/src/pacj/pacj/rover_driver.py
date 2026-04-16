@@ -1,7 +1,5 @@
-import json
 import threading
 import time
-from pathlib import Path
 
 import rclpy
 from dynamixel_sdk import *
@@ -26,17 +24,11 @@ class RoverDriver(Node):
         
         # Coupling Settings (ID 3)
         self.COUPLE_ID    = 3
-        self.POS_OPEN     = 2570
+        self.POS_OPEN     = None
         self.CLOSE_OFFSET = int(self.declare_parameter('coupler_close_offset', 1000).value)
-        self.POS_CLOSED   = self.POS_OPEN + self.CLOSE_OFFSET
+        self.POS_CLOSED   = None
         self.COUPLE_SPEED = 30      # Set once at startup (Steady crawl)
         self.SAFE_PWM     = 250     # Power cap to protect gears
-        self.CALIBRATION_FILE = Path(
-            self.declare_parameter(
-                'coupler_calibration_file',
-                str(Path.home() / '.pacj' / 'coupler_calibration.json'),
-            ).value
-        ).expanduser()
         
         # --- 2. CONTROL TABLE ADDRESSES ---
         self.ADDR_OPERATING_MODE  = 11
@@ -59,7 +51,6 @@ class RoverDriver(Node):
             self.get_logger().error("Serial Link Failed! Check U2D2 connection.")
             return
 
-        self.load_coupler_calibration()
         self.setup_hardware()
 
         # --- 4. ROS INTERFACES ---
@@ -102,50 +93,6 @@ class RoverDriver(Node):
             # Error Code 0x20 is Overload. If triggered, the LED will blink and torque will drop.
             self.packet_handler.write1ByteTxRx(self.port_handler, self.COUPLE_ID, 48, 0x20)
 
-    def load_coupler_calibration(self):
-        if not self.CALIBRATION_FILE.exists():
-            self.get_logger().warn(
-                f"No coupler calibration file at {self.CALIBRATION_FILE}. "
-                f"Using defaults open={self.POS_OPEN}, close={self.POS_CLOSED}."
-            )
-            return
-
-        try:
-            with self.CALIBRATION_FILE.open('r', encoding='utf-8') as file:
-                data = json.load(file)
-
-            open_pos = int(data.get('open_position', data.get('pos_open', self.POS_OPEN)))
-            self.POS_OPEN = open_pos
-            self.recompute_closed_position()
-            self.get_logger().info(
-                f"Loaded coupler calibration from {self.CALIBRATION_FILE} "
-                f"(open={self.POS_OPEN}, close={self.POS_CLOSED}, offset={self.CLOSE_OFFSET})"
-            )
-        except Exception as exc:
-            self.get_logger().warn(
-                f"Failed to load coupler calibration ({exc}). "
-                f"Using defaults open={self.POS_OPEN}, close={self.POS_CLOSED}."
-            )
-
-    def save_coupler_calibration(self):
-        try:
-            self.CALIBRATION_FILE.parent.mkdir(parents=True, exist_ok=True)
-            with self.CALIBRATION_FILE.open('w', encoding='utf-8') as file:
-                json.dump(
-                    {
-                        'open_position': int(self.POS_OPEN),
-                        'close_offset': int(self.CLOSE_OFFSET),
-                    },
-                    file,
-                    indent=2,
-                )
-            self.get_logger().info(
-                f"Saved coupler calibration to {self.CALIBRATION_FILE} "
-                f"(open={self.POS_OPEN}, close={self.POS_CLOSED}, offset={self.CLOSE_OFFSET})"
-            )
-        except Exception as exc:
-            self.get_logger().error(f"Failed to save coupler calibration: {exc}")
-
     def recompute_closed_position(self):
         self.POS_CLOSED = self.POS_OPEN + self.CLOSE_OFFSET
 
@@ -181,13 +128,19 @@ class RoverDriver(Node):
 
         self.POS_OPEN = position
         self.recompute_closed_position()
-        self.save_coupler_calibration()
         self.get_logger().info(
             f"Captured OPEN endpoint at {position}; CLOSE auto-set to {self.POS_CLOSED} "
             f"(offset={self.CLOSE_OFFSET})"
         )
 
     def get_target_position_from_command(self, command):
+        if self.POS_OPEN is None or self.POS_CLOSED is None:
+            self.get_logger().error(
+                "Coupler is not calibrated! You must set the open position first "
+                "by sending 'set_open' or using 'relax' then 'set_open'."
+            )
+            return None, None
+
         if self.POS_OPEN == self.POS_CLOSED:
             self.get_logger().error(
                 "Open and close endpoints are identical. Recalibrate with "
