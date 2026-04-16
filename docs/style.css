@@ -244,6 +244,11 @@ section {
   gap: 1.1rem;
 }
 
+/* Force 2-column rows for Concept Design module cards */
+.concept-grid-row {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
 .detail-card {
   background: var(--color-surface);
   border: 1px solid var(--color-border);
@@ -461,5 +466,9 @@ footer a:hover {
 
   .req-table {
     min-width: 560px;
+  }
+
+  .concept-grid-row {
+    grid-template-columns: 1fr;
   }
 }
