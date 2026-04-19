@@ -94,7 +94,7 @@ class RoverDriver(Node):
             self.packet_handler.write1ByteTxRx(self.port_handler, self.COUPLE_ID, 48, 0x20)
 
     def recompute_closed_position(self):
-        self.POS_CLOSED = self.POS_OPEN - self.CLOSE_OFFSET
+        self.POS_CLOSED = self.POS_OPEN + self.CLOSE_OFFSET
 
     def read_coupler_position(self):
         with self.comm_lock:
@@ -242,7 +242,7 @@ class RoverDriver(Node):
 
         if command == 'set_close':
             self.get_logger().warn(
-                "set_close is deprecated. Close is auto-computed as open - offset. "
+                "set_close is deprecated. Close is auto-computed as open + offset. "
                 "Use 'set_open' only."
             )
             return
