@@ -330,47 +330,14 @@
 
   <hr class="divider" />
 
-  <!-- Videos -->
+  <!-- Videos: list is built from PACJ_DRIVE_DEMOS in the script at the bottom of this file -->
   <section id="videos">
     <h2 class="section-title">System Demonstration Videos</h2>
     <p class="section-subtitle">
-      <!-- Replace placeholders with your final demo links. Keep one video per milestone for a clean portfolio narrative. -->
-      <!-- ADD ANY ADDITIONAL VIDEOS OR REMOVE WHATEVER  -->
+      Short demonstrations of the integrated system. Videos are embedded from Google Drive; each file should be shared as
+      "Anyone with the link" (Viewer) so the preview player loads for visitors.
     </p>
-
-    <div class="video-grid">
-      <article class="video-card">
-        <h3>Video 1 - End-to-End Mission</h3>
-        <p>Full startup, navigation, coupling, transport, and redeployment sequence.</p>
-        <!-- Paste Video 1 embed URL below -->
-        <!-- Example: src="https://www.youtube.com/embed/YOUR_VIDEO_ID" -->
-        <iframe src="https://www.youtube.com/embed/VIDEO_ID_1" title="PACJ End-to-End Mission" loading="lazy" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe>
-      </article>
-
-      <article class="video-card">
-        <h3>Video 2 - Coupling and Transfer</h3>
-        <p>Precision alignment, hard coupling, payload lift, and release procedure.</p>
-        <!-- Paste Video 2 embed URL below -->
-        <!-- Example: src="https://www.youtube.com/embed/YOUR_VIDEO_ID" -->
-        <iframe src="https://www.youtube.com/embed/VIDEO_ID_2" title="PACJ Coupling and Transfer" loading="lazy" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe>
-      </article>
-
-      <article class="video-card">
-        <h3>Video 3 - Mapping and Localization</h3>
-        <p>Shared mapping outputs, pose tracking, and operator visualization loop.</p>
-        <!-- Paste Video 3 embed URL below -->
-        <!-- Example: src="https://www.youtube.com/embed/YOUR_VIDEO_ID" -->
-        <iframe src="https://www.youtube.com/embed/VIDEO_ID_3" title="PACJ Mapping and Localization" loading="lazy" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe>
-      </article>
-
-      <article class="video-card">
-        <h3>Video 4 - Safety and Recovery</h3>
-        <p>Emergency-stop response, temporary link loss behavior, and controlled recovery.</p>
-        <!-- Paste Video 4 embed URL below -->
-        <!-- Example: src="https://www.youtube.com/embed/YOUR_VIDEO_ID" -->
-        <iframe src="https://www.youtube.com/embed/VIDEO_ID_4" title="PACJ Safety and Recovery" loading="lazy" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe>
-      </article>
-    </div>
+    <div id="demo-videos-mount" class="demo-videos-mount"></div>
   </section>
 
   <hr class="divider" />
@@ -550,6 +517,127 @@
       <a href="https://github.com/PinheadPatty/PACJ/blob/main/LICENSE" target="_blank" rel="noopener">License</a>
     </span>
   </footer>
+
+  <script>
+    (function () {
+      /* ========== Edit this block: one entry per Drive video ==========
+         driveUrlOrId: paste the full share URL from Google Drive, or paste only the file id
+         (the long token in https://drive.google.com/file/d/THIS_PART/view)
+         =============================================================== */
+      var PACJ_DRIVE_FOLDER_URL = '';
+      var PACJ_DRIVE_DEMOS = [
+        // Example (delete the leading // on each line to use it):
+        // {
+        //   title: 'End-to-end mission',
+        //   description: 'Startup, navigation, coupling, transport, and redeployment.',
+        //   driveUrlOrId: 'https://drive.google.com/file/d/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/view?usp=sharing',
+        // },
+        {
+          title: 'Coupling CAD',
+          description: "Display of our coupler's inner workings.",
+          driveUrlOrId: 'https://drive.google.com/file/d/1YKTXYjdVCXmE2HAX65R3mgLhpUbCfmyh/view?usp=sharing',
+        },
+      ];
+
+      function parseDriveFileId(raw) {
+        if (!raw || typeof raw !== 'string') return '';
+        var s = raw.trim();
+        if (!s) return '';
+        var m = s.match(/\/file\/d\/([a-zA-Z0-9_-]+)/);
+        if (m) return m[1];
+        m = s.match(/[?&]id=([a-zA-Z0-9_-]+)/);
+        if (m) return m[1];
+        if (/^[a-zA-Z0-9_-]+$/.test(s) && s.length >= 10) return s;
+        return '';
+      }
+
+      var mount = document.getElementById('demo-videos-mount');
+      if (!mount) return;
+
+      var rows = [];
+      for (var i = 0; i < PACJ_DRIVE_DEMOS.length; i++) {
+        var item = PACJ_DRIVE_DEMOS[i];
+        var id = parseDriveFileId(item.driveUrlOrId);
+        var title = (item.title && String(item.title).trim()) || 'Demo clip';
+        if (!id) continue;
+        rows.push({ id: id, title: title, description: (item.description && String(item.description)) || '' });
+      }
+
+      if (PACJ_DRIVE_FOLDER_URL && String(PACJ_DRIVE_FOLDER_URL).trim()) {
+        var bar = document.createElement('p');
+        bar.className = 'video-folder-cta';
+        var a = document.createElement('a');
+        a.href = String(PACJ_DRIVE_FOLDER_URL).trim();
+        a.target = '_blank';
+        a.rel = 'noopener noreferrer';
+        a.className = 'btn btn-secondary';
+        a.textContent = 'Open demo folder on Google Drive ↗';
+        bar.appendChild(a);
+        mount.appendChild(bar);
+      }
+
+      if (!rows.length) {
+        var empty = document.createElement('div');
+        empty.className = 'video-empty detail-card';
+        empty.innerHTML =
+          '<h3>No videos configured yet</h3>' +
+          '<p>In <code>index.html</code>, search for <code>PACJ_DRIVE_DEMOS</code> and add an object for each clip:</p>' +
+          '<pre class="video-config-sample"><code>{\n' +
+          '  title: "Your clip title",\n' +
+          '  description: "One or two sentences about what the viewer will see.",\n' +
+          '  driveUrlOrId: "paste Drive share link or file id here",\n' +
+          '},</code></pre>' +
+          '<p>Optional: set <code>PACJ_DRIVE_FOLDER_URL</code> in the same script block to show a button to your public folder.</p>';
+        mount.appendChild(empty);
+        return;
+      }
+
+      var grid = document.createElement('div');
+      grid.className = 'video-grid';
+
+      for (var j = 0; j < rows.length; j++) {
+        var r = rows[j];
+        var article = document.createElement('article');
+        article.className = 'video-card';
+
+        var h3 = document.createElement('h3');
+        h3.textContent = r.title;
+        article.appendChild(h3);
+
+        if (r.description) {
+          var pDesc = document.createElement('p');
+          pDesc.className = 'video-desc';
+          pDesc.textContent = r.description;
+          article.appendChild(pDesc);
+        }
+
+        var frame = document.createElement('div');
+        frame.className = 'video-frame';
+        var iframe = document.createElement('iframe');
+        iframe.src = 'https://drive.google.com/file/d/' + r.id + '/preview';
+        iframe.title = r.title;
+        iframe.loading = 'lazy';
+        iframe.setAttribute('allow', 'autoplay');
+        iframe.setAttribute('allowfullscreen', '');
+        frame.appendChild(iframe);
+        article.appendChild(frame);
+
+        var pOpen = document.createElement('p');
+        pOpen.className = 'video-open';
+        var link = document.createElement('a');
+        link.href = 'https://drive.google.com/file/d/' + r.id + '/view';
+        link.target = '_blank';
+        link.rel = 'noopener noreferrer';
+        link.textContent = 'Open in Google Drive ↗';
+        pOpen.appendChild(link);
+        article.appendChild(pOpen);
+
+        grid.appendChild(article);
+      }
+
+      mount.appendChild(grid);
+    })();
+  </script>
 
 </body>
 </html>
