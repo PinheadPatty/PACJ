@@ -1,0 +1,718 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="PACJ capstone portfolio: detailed problem definition, requirements, concept design, and system demonstrations." />
+  <title>PACJ - Capstone Portfolio</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+  <!-- Navigation -->
+  <nav>
+    <div class="nav-inner">
+      <span class="nav-logo">PA<span>CJ</span></span>
+      <ul class="nav-links">
+        <li><a href="#problem">Problem</a></li>
+        <li><a href="#requirements">Requirements</a></li>
+        <li><a href="#concept">Concept</a></li>
+        <li><a href="#videos">Videos</a></li>
+        <li><a href="#stack">Tech Stack</a></li>
+        <li><a href="https://github.com/PinheadPatty/PACJ" target="_blank" rel="noopener">GitHub ↗</a></li>
+      </ul>
+    </div>
+  </nav>
+
+  <!-- Hero -->
+  <header>
+    <div class="hero">
+      <div class="hero-badge">Capstone Project · ROS 2 · Air-Ground Autonomy</div>
+      <h1>Autonomous <span>Drone &amp; Rover</span><br>Coordination Platform</h1>
+      <p class="hero-subtitle">
+        PACJ is a modular ROS 2 framework that integrates drone flight, rover locomotion,
+        coupling/decoupling, 3-D mapping, localization, and operator control into one deployable system.
+      </p>
+      <div class="hero-ctas">
+        <a class="btn btn-primary" href="#problem">Read Project Details</a>
+        <a class="btn btn-secondary" href="#videos">Watch System Videos</a>
+      </div>
+    </div>
+  </header>
+
+  <hr class="divider" />
+
+  <!-- Problem Definition -->
+  <section id="problem">
+    <h2 class="section-title">Problem Definition</h2>
+    <p class="section-subtitle">
+      Why PACJ exists and what engineering gap it addresses.
+    </p>
+
+    <div class="detail-card">
+      <h3>System-Level Challenge</h3>
+      <p>
+        Aerial robots and ground robots each have strong but different capabilities. Drones can rapidly navigate
+        complex 3-D spaces and gain overhead visibility, while rovers provide stable, energy-efficient operation
+        for sustained ground tasks. In most field deployments, these systems are operated independently, which
+        limits mission flexibility and increases operator workload.
+      </p>
+      <p>
+        PACJ addresses this by creating a coupled air-ground architecture where a drone can autonomously attach to,
+        transport, and redeploy a rover. This enables a mission class that neither platform can reliably achieve alone:
+        cooperative search, obstacle bypass, structured inspection, and multi-phase mapping in constrained environments.
+      </p>
+    </div>
+
+    <div class="detail-grid">
+      <article class="detail-card">
+        <div class="feature-icon">🧭</div>
+        <h3>Relocation Across Obstacles</h3>
+        <p>
+          The drone couples with the rover, lifts it vertically, crosses impassable terrain, and redeploys it in a safe zone.
+          This converts vertical access into ground mobility continuity.
+        </p>
+      </article>
+
+      <article class="detail-card">
+        <div class="feature-icon">🔋</div>
+        <h3>Sustained Mission Endurance</h3>
+        <p>
+          The architecture supports recharge/energy continuity workflows so the rover can remain mission-capable without
+          continuous manual intervention.
+        </p>
+      </article>
+
+      <article class="detail-card">
+        <div class="feature-icon">🆘</div>
+        <h3>Search and Rescue Utility</h3>
+        <p>
+          The drone provides high-level situational awareness while the rover performs close-range navigation in debris
+          or confined zones. Together they improve coverage, guidance, and survivability outcomes.
+        </p>
+      </article>
+
+      <article class="detail-card">
+        <div class="feature-icon">🕵️</div>
+        <h3>Discreet Access and Retrieval</h3>
+        <p>
+          In constrained or visibility-sensitive environments, the rover handles low-profile entry while the drone contributes
+          elevation and rapid repositioning when needed.
+        </p>
+      </article>
+
+      <article class="detail-card">
+        <div class="feature-icon">📊</div>
+        <h3>Data Collection in Difficult Areas</h3>
+        <p>
+          The drone can deploy the rover into otherwise unreachable measurement zones, enabling distributed sensing and
+          continuous relay of mission data to the operator.
+        </p>
+      </article>
+
+      <article class="detail-card">
+        <div class="feature-icon">🎯</div>
+        <h3>Capstone Objective</h3>
+        <p>
+          Deliver a repeatable, testable, and safe system that demonstrates autonomous coupling, shared situational
+          awareness, and robust teleoperation/autonomy handoff for a drone-rover team.
+        </p>
+      </article>
+    </div>
+  </section>
+
+  <hr class="divider" />
+
+  <!-- Requirements -->
+  <section id="requirements">
+    <h2 class="section-title">Requirements Specification</h2>
+    <p class="section-subtitle">
+      Detailed requirements for the PACJ drone-rover system.
+    </p>
+
+    <div class="detail-card">
+      <h3>Operational Assumptions (ASMP)</h3>
+      <div class="table-wrap">
+        <table class="req-table">
+          <thead>
+            <tr><th>ID</th><th>Description</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>ASMP-01</td><td>System will not experience significant water exposure.</td></tr>
+            <tr><td>ASMP-02</td><td>System operates indoors; wind conditions above 1 mph are out of scope.</td></tr>
+            <tr><td>ASMP-03</td><td>System does not operate around dense mid-air obstacles outside planned scenarios.</td></tr>
+            <tr><td>ASMP-04</td><td>System does not operate around dynamic ground obstacles outside test constraints.</td></tr>
+            <tr><td>ASMP-05</td><td>No rough terrain beyond design assumptions (slippery/rocky/holes or slope beyond 10 degrees).</td></tr>
+            <tr><td>ASMP-06</td><td>Operation assumes clear visibility and normal indoor lighting.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="detail-card">
+      <h3>System Requirements (SYS)</h3>
+      <div class="table-wrap">
+        <table class="req-table">
+          <thead>
+            <tr><th>ID</th><th>Description</th><th>Priority</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>SYS-F01</td><td>Drone and rover must explore a 3 m x 3 m x 3 m area.</td><td>High</td></tr>
+            <tr><td>SYS-F02</td><td>User must receive video relay from both drone and rover.</td><td>Medium</td></tr>
+            <tr><td>SYS-F03</td><td>Drone must carry rover over obstacles.</td><td>High</td></tr>
+            <tr><td>SYS-F04</td><td>Rover must carry drone under obstacles.</td><td>High</td></tr>
+            <tr><td>SYS-F05</td><td>System must generate full 3-D mapping of the target area.</td><td>Medium</td></tr>
+            <tr><td>SYS-F06</td><td>3-D map output must be relayed to user interface.</td><td>Medium</td></tr>
+            <tr><td>SYS-F07</td><td>User must have teleoperation and autonomous control options for both agents.</td><td>Low</td></tr>
+            <tr><td>SYS-F08</td><td>User must have optional independent control of each agent.</td><td>Medium</td></tr>
+            <tr><td>SYS-F09</td><td>System must operate for at least 5 minutes.</td><td>High</td></tr>
+            <tr><td>SYS-F10</td><td>System must stop within 5 seconds of emergency-stop command.</td><td>High</td></tr>
+            <tr><td>SYS-NF01</td><td>System must complete full exploration of 3 m x 3 m x 3 m area within 3 minutes.</td><td>Medium</td></tr>
+            <tr><td>SYS-NF02</td><td>Video relay latency must remain below 0.5 seconds.</td><td>High</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="detail-card">
+        <h3>Drone Subsystem (DR)</h3>
+        <div class="table-wrap">
+          <table class="req-table">
+            <thead>
+              <tr><th>ID</th><th>Description</th><th>Priority</th></tr>
+            </thead>
+            <tbody>
+              <tr><td>DR-F01</td><td>Independent flight endurance at least 20 minutes.</td><td>Medium</td></tr>
+              <tr><td>DR-F02</td><td>Flight endurance with rover payload at least 5 minutes.</td><td>High</td></tr>
+              <tr><td>DR-F03</td><td>Stable payload flight with minimized sway and robust control response.</td><td>High</td></tr>
+              <tr><td>DR-F04</td><td>Capture front-facing color and depth images.</td><td>High</td></tr>
+              <tr><td>DR-F05</td><td>Capture downward-facing color and depth images.</td><td>Low</td></tr>
+              <tr><td>DR-F06</td><td>Transmit image stream at 30 FPS with latency below 100 ms.</td><td>Medium</td></tr>
+              <tr><td>DR-F07</td><td>Vertical alignment tolerance within 3 cm for coupling.</td><td>High</td></tr>
+              <tr><td>DR-F09</td><td>Hard-coupling mechanism self-aligns during lowering.</td><td>High</td></tr>
+              <tr><td>DR-F10</td><td>Secure lock after hard coupling.</td><td>High</td></tr>
+              <tr><td>DR-F13</td><td>Locking mechanism withstands at least 2x rover load and swing disturbance.</td><td>High</td></tr>
+              <tr><td>DR-NF01</td><td>Maximum speed without rover is over 7 mph.</td><td>Low</td></tr>
+              <tr><td>DR-NF02</td><td>Maximum speed with rover is over 3 mph.</td><td>Low</td></tr>
+              <tr><td>DR-NF03</td><td>Payload stabilization with rover occurs in under 1 second.</td><td>High</td></tr>
+              <tr><td>DR-NF04</td><td>Frontal image resolution is at least 720p.</td><td>Medium</td></tr>
+              <tr><td>DR-NF05</td><td>Temporary link loss under 5 seconds does not interrupt previous commands.</td><td>Medium</td></tr>
+              <tr><td>DR-NF06</td><td>Extended link loss over 5 seconds triggers emergency-stop behavior.</td><td>High</td></tr>
+            </tbody>
+          </table>
+        </div>
+    </div>
+
+    <div class="detail-card">
+        <h3>Rover Subsystem (RV)</h3>
+        <div class="table-wrap">
+          <table class="req-table">
+            <thead>
+              <tr><th>ID</th><th>Description</th><th>Priority</th></tr>
+            </thead>
+            <tbody>
+              <tr><td>RV-F01</td><td>Independent drive endurance at least 30 minutes.</td><td>Medium</td></tr>
+              <tr><td>RV-F02</td><td>Coupled drive endurance with drone at least 15 minutes.</td><td>High</td></tr>
+              <tr><td>RV-F03</td><td>Stabilize payload-induced sway torque while carrying drone.</td><td>High</td></tr>
+              <tr><td>RV-F04</td><td>Capture frontal image and depth data.</td><td>High</td></tr>
+              <tr><td>RV-F05</td><td>Provide matching top geometry for soft coupling.</td><td>Medium</td></tr>
+              <tr><td>RV-F06</td><td>Contain and power the hard-coupling mechanism.</td><td>Medium</td></tr>
+              <tr><td>RV-F07</td><td>Securely lock to drone after hard coupling.</td><td>High</td></tr>
+              <tr><td>RV-F08</td><td>Combined rover + drone mass remains below rover carrying capacity.</td><td>High</td></tr>
+              <tr><td>RV-F09</td><td>Maintain secure coupling during dynamic driving.</td><td>High</td></tr>
+              <tr><td>RV-F10</td><td>Teleoperation command latency remains under 200 ms.</td><td>Medium</td></tr>
+              <tr><td>RV-F11</td><td>Emergency-stop response occurs within 3 seconds.</td><td>High</td></tr>
+              <tr><td>RV-F12</td><td>Receive trajectory path plans from operator station.</td><td>Medium</td></tr>
+            </tbody>
+          </table>
+        </div>
+    </div>
+
+    <div class="detail-card">
+      <h3>Laptop / Operator Station (LP)</h3>
+      <div class="table-wrap">
+        <table class="req-table">
+          <thead>
+            <tr><th>ID</th><th>Description</th><th>Priority</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>LP-F01</td><td>Receive and display continuous frontal drone footage with under 30 ms latency target.</td><td>Medium</td></tr>
+            <tr><td>LP-F02</td><td>Receive and display continuous frontal rover footage with under 30 ms latency target.</td><td>Medium</td></tr>
+            <tr><td>LP-F03</td><td>Transmit velocity commands to the drone.</td><td>High</td></tr>
+            <tr><td>LP-F04</td><td>Transmit velocity commands to the rover.</td><td>High</td></tr>
+            <tr><td>LP-F05</td><td>Receive bottom-camera drone footage during coupling phase.</td><td>High</td></tr>
+            <tr><td>LP-F06</td><td>Detect rover top from drone bottom camera within 500 ms when geometry constraints are met.</td><td>High</td></tr>
+            <tr><td>LP-F07</td><td>Estimate drone-rover distance from downward camera view.</td><td>High</td></tr>
+            <tr><td>LP-F08</td><td>Estimate drone pose within 1 m radius and 20-degree yaw accuracy target, under 500 ms latency.</td><td>Medium</td></tr>
+            <tr><td>LP-F09</td><td>Estimate rover pose within 1 m radius and 20-degree yaw accuracy target, under 500 ms latency.</td><td>Medium</td></tr>
+            <tr><td>LP-NF01</td><td>User command pipeline for drone must remain reliable.</td><td>High</td></tr>
+            <tr><td>LP-NF02</td><td>User command pipeline for rover must remain reliable.</td><td>High</td></tr>
+            <tr><td>LP-NF03</td><td>Autonomous behaviors must always be interruptible by user override.</td><td>High</td></tr>
+            <tr><td>LP-NF04</td><td>Temporary link loss under 5 seconds should avoid full failure.</td><td>Medium</td></tr>
+            <tr><td>LP-NF05</td><td>Extended link loss over 5 seconds should trigger emergency equivalent behavior.</td><td>Medium</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <hr class="divider" />
+
+  <!-- Concept Design -->
+  <section id="concept">
+    <h2 class="section-title">Concept Design and Operation</h2>
+    <p class="section-subtitle">
+      Three-part architecture for coupling, autonomy, and operator-supervised mission execution.
+    </p>
+
+    <div class="detail-grid concept-grid-row">
+      <article class="detail-card">
+        <div class="feature-icon">🤖</div>
+        <h3>Rover Module</h3>
+        <p>
+          Lightweight rover with matching top geometry for soft coupling, onboard hard docking mechanism,
+          teleoperation capability, and autonomous path planning/localization in known maps.
+        </p>
+      </article>
+      <article class="detail-card">
+        <div class="feature-icon">🚁</div>
+        <h3>Drone Module</h3>
+        <p>
+          Drone with downward camera and ranging support for alignment, adaptive payload-aware control,
+          and safe coupling/transport/redeployment while maintaining controllability.
+        </p>
+      </article>
+    </div>
+
+    <div class="detail-grid concept-grid-row">
+      <article class="detail-card">
+        <div class="feature-icon">💻</div>
+        <h3>Operator Application</h3>
+        <p>
+          Laptop app presents synchronized camera streams, mission controls, and mode switching
+          between manual teleoperation and autonomous behaviors.
+        </p>
+      </article>
+      <article class="detail-card">
+        <div class="feature-icon">🛑</div>
+        <h3>Safety Layer</h3>
+        <p>
+          Global emergency-stop behavior interrupts both agents, forcing immediate rover halt and
+          rapid safe drone landing path.
+        </p>
+      </article>
+    </div>
+
+    <div class="detail-card">
+      <h3>Concept of Operation</h3>
+      <ol class="detail-list ordered">
+        <li>Operator monitors drone and rover streams side-by-side from laptop control station.</li>
+        <li>User can assume manual teleoperation at any time for either platform.</li>
+        <li>Autonomous command options include takeoff/land, couple-to-rover, exploration, and point navigation.</li>
+        <li>Rover autonomous options include drive-under-drone, area exploration, and target waypoint navigation.</li>
+        <li>Drone performs precision vertical alignment and coupling using downward sensing.</li>
+        <li>Coupled transport executes across obstacles, then drone lowers rover and releases for resumed ground mission.</li>
+        <li>Emergency-stop remains globally available throughout all modes.</li>
+      </ol>
+    </div>
+
+    <div class="detail-card">
+      <h3>Example Demo Flow</h3>
+      <ol class="detail-list ordered">
+        <li>Initialize agents on opposite sides of environmental barrier and validate telemetry/video links.</li>
+        <li>Rover performs local drive and mapping, requests pickup when blocked by barrier.</li>
+        <li>Drone aligns, hard-couples, lifts rover, and traverses obstacle zone.</li>
+        <li>Drone redeploys rover in clear area; rover resumes autonomous path and mapping.</li>
+        <li>System returns state estimates and mission outputs to operator interface for verification.</li>
+      </ol>
+    </div>
+  </section>
+
+  <hr class="divider" />
+
+  <!-- Videos: list is built from PACJ_DRIVE_DEMOS in the script at the bottom of this file -->
+  <section id="videos">
+    <h2 class="section-title">System Demonstration Videos</h2>
+    <p class="section-subtitle">
+      Short demonstrations of the integrated system. Videos are embedded from Google Drive; each file should be shared as
+      "Anyone with the link" (Viewer) so the preview player loads for visitors.
+    </p>
+    <div id="demo-videos-mount" class="demo-videos-mount"></div>
+  </section>
+
+  <hr class="divider" />
+
+  <!-- Existing Project Overview Sections (original style) -->
+  <section id="features">
+    <h2 class="section-title">Core Capabilities</h2>
+    <p class="section-subtitle">PACJ feature set.</p>
+    <div class="feature-grid">
+      <div class="feature-card">
+        <div class="feature-icon">🚁</div>
+        <h3>Drone Control</h3>
+        <p>PX4 offboard control, autonomous setpoint execution, and flight state monitoring.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">🤖</div>
+        <h3>Rover Navigation</h3>
+        <p>Dynamixel-based rover driver, teleop velocity handling, and coupling motor actuation.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">🗺️</div>
+        <h3>3-D Mapping</h3>
+        <p>Depth-driven map construction from RGB-D sensing with ROS 2 integration.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">📍</div>
+        <h3>Localization</h3>
+        <p>Visual-inertial and frame-relay architecture for shared situational awareness.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">🔲</div>
+        <h3>Module Manipulation</h3>
+        <p>Coupler workflows for pickup, transport, and release operations.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">📷</div>
+        <h3>RGB-D Vision</h3>
+        <p>Front and downward visual streams to support autonomy and operator decisions.</p>
+      </div>
+    </div>
+  </section>
+
+  <hr class="divider" />
+
+  <section id="architecture">
+    <h2 class="section-title">System Architecture</h2>
+    <p class="section-subtitle">Detailed subsystem architecture across agents, sensing, planning, and operator stack.</p>
+    <div class="arch-grid">
+      <div class="arch-card">
+        <div class="arch-label">Agent</div>
+        <h4>Drone</h4>
+        <p>Runs PX4-facing control, payload-aware flight behavior, and autonomous coupling/transfer execution.</p>
+      </div>
+      <div class="arch-card">
+        <div class="arch-label">Agent</div>
+        <h4>Rover</h4>
+        <p>Runs ground locomotion, coupler actuation, and local mission continuation after drone redeployment.</p>
+      </div>
+      <div class="arch-card">
+        <div class="arch-label">Operator</div>
+        <h4>Laptop</h4>
+        <p>Hosts teleop/autonomy controls, mission supervision, and real-time video/map visualization.</p>
+      </div>
+      <div class="arch-card">
+        <div class="arch-label">Middleware</div>
+        <h4>ROS 2 Graph</h4>
+        <p>Shared topics/services connect drone, rover, and laptop for command, telemetry, maps, and sensor streams.</p>
+      </div>
+      <div class="arch-card">
+        <div class="arch-label">Estimation</div>
+        <h4>TF + VIO Relay</h4>
+        <p>Frame broadcasting and odometry relays align all agents into a shared coordinate context.</p>
+      </div>
+      <div class="arch-card">
+        <div class="arch-label">Mapping</div>
+        <h4>Depth Pipeline</h4>
+        <p>Compressed depth feeds decompression and SLAM/mapping nodes for shared environment reconstruction.</p>
+      </div>
+      <div class="arch-card">
+        <div class="arch-label">Manipulation</div>
+        <h4>Coupling Subsystem</h4>
+        <p>Soft/hard coupling mechanics and servo lock control enable pickup, transport, and release cycles.</p>
+      </div>
+      <div class="arch-card">
+        <div class="arch-label">Safety</div>
+        <h4>E-Stop + Failsafe</h4>
+        <p>Global stop path, link-loss handling, and controlled landing/halt behavior protect hardware and operators.</p>
+      </div>
+    </div>
+
+    <div class="detail-card">
+      <h3>Perception and Sensor Topology</h3>
+      <div class="table-wrap">
+        <table class="req-table">
+          <thead>
+            <tr><th>Subsystem</th><th>Sensor</th><th>Role</th><th>Data / Interface</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Drone Perception</td>
+              <td>Orbbec Gemini RGB-D (Drone)</td>
+              <td>Front-view color+depth for navigation, mapping, and scene understanding.</td>
+              <td>ROS topics from drone camera namespace (color/depth + camera info).</td>
+            </tr>
+            <tr>
+              <td>Rover Perception</td>
+              <td>Orbbec Gemini RGB-D (Rover)</td>
+              <td>Ground-view depth perception for obstacle awareness and local map updates.</td>
+              <td>ROS topics from rover camera namespace (color/depth + camera info).</td>
+            </tr>
+            <tr>
+              <td>Drone Coupling Vision</td>
+              <td>Auxiliary Downward Camera (RPi Camera V2 class)</td>
+              <td>Rover-top detection and close-range alignment during coupling/decoupling maneuvers.</td>
+              <td>Bottom-camera stream used by alignment and operator feedback loop.</td>
+            </tr>
+            <tr>
+              <td>Auxiliary Vision Suite</td>
+              <td>Additional top/bottom mission cameras</td>
+              <td>Supplemental perspective views used in testing, monitoring, and coupling verification.</td>
+              <td>Additional image streams integrated into operator and validation workflows.</td>
+            </tr>
+            <tr>
+              <td>Rover Range Sensing</td>
+              <td>LiDAR Scanner</td>
+              <td>Horizon scan and obstacle boundary detection to support safe local navigation.</td>
+              <td>Range/scan stream fused with camera-based perception.</td>
+            </tr>
+            <tr>
+              <td>Inertial + Motion Sensing</td>
+              <td>IMU, wheel encoders, auxiliary short-range sensors</td>
+              <td>Stabilization, motion estimation, and short-range safety checks.</td>
+              <td>Used in state estimation and control loops with visual/depth data.</td>
+            </tr>
+            <tr>
+              <td>Perception Processing</td>
+              <td>Depth decompression + SLAM integration</td>
+              <td>Converts compressed depth streams and feeds mapping/localization pipeline.</td>
+              <td>Bridges sensor transport into mapping and operator visualization outputs.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <hr class="divider" />
+
+  <section id="stack">
+    <h2 class="section-title">Technology Stack</h2>
+    <p class="section-subtitle">Core software and hardware ecosystem used in implementation.</p>
+    <div class="stack-list">
+      <span class="stack-tag">ROS 2 Humble</span>
+      <span class="stack-tag">Python 3</span>
+      <span class="stack-tag">PX4 Autopilot</span>
+      <span class="stack-tag">px4_msgs</span>
+      <span class="stack-tag">Orbbec ROS 2 SDK</span>
+      <span class="stack-tag">LiDAR</span>
+      <span class="stack-tag">RPi Camera V2</span>
+      <span class="stack-tag">Dynamixel SDK</span>
+      <span class="stack-tag">geometry_msgs</span>
+      <span class="stack-tag">sensor_msgs</span>
+      <span class="stack-tag">TF / VIO Relay</span>
+      <span class="stack-tag">RViz 2</span>
+      <span class="stack-tag">ament_python</span>
+      <span class="stack-tag">GeographicLib</span>
+    </div>
+  </section>
+
+  <hr class="divider" />
+
+  <footer>
+    <span>© 2026 PACJ Capstone Project</span>
+    <span>
+      <a href="https://github.com/PinheadPatty/PACJ" target="_blank" rel="noopener">GitHub</a>
+      &nbsp;·&nbsp;
+      <a href="https://github.com/PinheadPatty/PACJ/blob/main/LICENSE" target="_blank" rel="noopener">License</a>
+    </span>
+  </footer>
+
+  <script>
+    (function () {
+      /* ========== Edit this block: one entry per Drive video ==========
+         driveUrlOrId: paste the full share URL from Google Drive, or paste only the file id
+         (the long token in https://drive.google.com/file/d/THIS_PART/view)
+         =============================================================== */
+      var PACJ_DRIVE_FOLDER_URL = '';
+      var PACJ_DRIVE_DEMOS = [
+        // Example (delete the leading // on each line to use it):
+        {
+          title: 'End-to-end mission',
+          description: 'Startup, navigation, coupling, transport, and redeployment.',
+          // change this URL
+          driveUrlOrId: 'https://drive.google.com/file/d/1YKTXYjdVCXmE2HAX65R3mgLhpUbCfmyh/view?usp=sharing',
+        },
+        {
+          title: 'Coupling Method CAD',
+          description: "Display of our coupler's inner workings.",
+          driveUrlOrId: 'https://drive.google.com/file/d/1YKTXYjdVCXmE2HAX65R3mgLhpUbCfmyh/view?usp=sharing',
+        },
+        {
+          title: 'Frame Integrity Test',
+          description: "Drone frame with our expected weight on it",
+          driveUrlOrId: 'https://drive.google.com/file/d/1kQpKVzUVmD87JQjBhWkygYub1mF9E6Uz/view?usp=sharing',
+        },
+        {
+          title: 'Drone Motors Test',
+          description: "Display of our drone motors working all wired up on the frame.",
+          driveUrlOrId: 'https://drive.google.com/file/d/1ImJMzOU6rXHKfP1f2Bc9jQS2si5wg2eK/view?usp=sharing',
+        },
+        {
+          title: 'Swing Test',
+          description: "Engaging our courpler system, and displaing it's structural integrity.",
+          driveUrlOrId: 'https://drive.google.com/file/d/1mT6-ip8klAJmD7F4UsftVWCi_cR7f4eB/view?usp=sharing',
+        },
+        {
+          title: 'Coupling',
+          description: "Drone starting uncoupled and clearly being coupled from the rover.",
+          // change this URL
+          driveUrlOrId: 'https://drive.google.com/file/d/1YKTXYjdVCXmE2HAX65R3mgLhpUbCfmyh/view?usp=sharing',
+        },
+        {
+          title: 'Uncoupling Test',
+          description: "Drone starting coupled and clearly being decoupled from the rover.",
+          driveUrlOrId: 'https://drive.google.com/file/d/1yj-QqqzhpekC3YreUxBEzCyDAZ8x62zD/view?usp=sharing',
+        },
+        {
+          title: 'Rover Driving',
+          description: "Full rover driving test, with SLAM map and teleop cameras and controls working.",
+          driveUrlOrId: 'https://drive.google.com/file/d/1j8hgAFP7SxI8rQ4ee9CHdVj0cLI_HS06/view?usp=sharing',
+        },
+        {
+          title: 'Sensor Data Calibrated',
+          description: "Showing off our fixed sensor data",
+          driveUrlOrId: 'https://drive.google.com/file/d/1nu1gUHSlafWjtfvc_hMwvEeQJ1dfSHw0/view?usp=sharing',
+        },
+        {
+          title: 'First Flight',
+          description: "First Flight! Not much, as it was clear the sensors were off, but still clearly lifts off the ground",
+          driveUrlOrId: 'https://drive.google.com/file/d/1CLEVbPJpcUd5iYCk8wuZsp3zhh8XGxL4/view?usp=sharing',
+        },
+        {
+          title: 'Coupled Takeoff',
+          description: "The drone takes off while coupled to the rover, demonstrating sufficient thrust margin for vertical lift with payload.",
+          // change this URL
+          driveUrlOrId: 'https://drive.google.com/file/d/1YKTXYjdVCXmE2HAX65R3mgLhpUbCfmyh/view?usp=sharing',
+        },
+        {
+          title: 'Assisted Precision Alignment (Drone to Rover)',
+          description: "Drone flies over to the rover and descends for coupling, using downward camera feedback.",
+          // change this URL
+          driveUrlOrId: 'https://drive.google.com/file/d/1YKTXYjdVCXmE2HAX65R3mgLhpUbCfmyh/view?usp=sharing',
+        },
+        {
+          title: 'Coupled Swing Test',
+          description: "Drone lifts the rover and performs a swing test for oscillation checking and coupling integrity.",
+          // change this URL
+          driveUrlOrId: 'https://drive.google.com/file/d/1YKTXYjdVCXmE2HAX65R3mgLhpUbCfmyh/view?usp=sharing',
+        },
+      ];
+
+      function parseDriveFileId(raw) {
+        if (!raw || typeof raw !== 'string') return '';
+        var s = raw.trim();
+        if (!s) return '';
+        var m = s.match(/\/file\/d\/([a-zA-Z0-9_-]+)/);
+        if (m) return m[1];
+        m = s.match(/[?&]id=([a-zA-Z0-9_-]+)/);
+        if (m) return m[1];
+        if (/^[a-zA-Z0-9_-]+$/.test(s) && s.length >= 10) return s;
+        return '';
+      }
+
+      var mount = document.getElementById('demo-videos-mount');
+      if (!mount) return;
+
+      var rows = [];
+      var featuredIndex = -1;
+      for (var i = 0; i < PACJ_DRIVE_DEMOS.length; i++) {
+        var item = PACJ_DRIVE_DEMOS[i];
+        var id = parseDriveFileId(item.driveUrlOrId);
+        var title = (item.title && String(item.title).trim()) || 'Demo clip';
+        if (!id) continue;
+        rows.push({ id: id, title: title, description: (item.description && String(item.description)) || '' });
+        if (featuredIndex === -1 && /end[\s-]*to[\s-]*end mission/i.test(title)) {
+          featuredIndex = rows.length - 1;
+        }
+      }
+
+      if (PACJ_DRIVE_FOLDER_URL && String(PACJ_DRIVE_FOLDER_URL).trim()) {
+        var bar = document.createElement('p');
+        bar.className = 'video-folder-cta';
+        var a = document.createElement('a');
+        a.href = String(PACJ_DRIVE_FOLDER_URL).trim();
+        a.target = '_blank';
+        a.rel = 'noopener noreferrer';
+        a.className = 'btn btn-secondary';
+        a.textContent = 'Open demo folder on Google Drive ↗';
+        bar.appendChild(a);
+        mount.appendChild(bar);
+      }
+
+      if (!rows.length) {
+        var empty = document.createElement('div');
+        empty.className = 'video-empty detail-card';
+        empty.innerHTML =
+          '<h3>No videos configured yet</h3>' +
+          '<p>In <code>index.html</code>, search for <code>PACJ_DRIVE_DEMOS</code> and add an object for each clip:</p>' +
+          '<pre class="video-config-sample"><code>{\n' +
+          '  title: "Your clip title",\n' +
+          '  description: "One or two sentences about what the viewer will see.",\n' +
+          '  driveUrlOrId: "paste Drive share link or file id here",\n' +
+          '},</code></pre>' +
+          '<p>Optional: set <code>PACJ_DRIVE_FOLDER_URL</code> in the same script block to show a button to your public folder.</p>';
+        mount.appendChild(empty);
+        return;
+      }
+
+      function buildVideoCard(r, extraClass) {
+        var article = document.createElement('article');
+        article.className = 'video-card' + (extraClass ? ' ' + extraClass : '');
+
+        var h3 = document.createElement('h3');
+        h3.textContent = r.title;
+        article.appendChild(h3);
+
+        if (r.description) {
+          var pDesc = document.createElement('p');
+          pDesc.className = 'video-desc';
+          pDesc.textContent = r.description;
+          article.appendChild(pDesc);
+        }
+
+        var frame = document.createElement('div');
+        frame.className = 'video-frame';
+        var iframe = document.createElement('iframe');
+        iframe.src = 'https://drive.google.com/file/d/' + r.id + '/preview';
+        iframe.title = r.title;
+        iframe.loading = 'lazy';
+        iframe.setAttribute('allow', 'autoplay');
+        iframe.setAttribute('allowfullscreen', '');
+        frame.appendChild(iframe);
+        article.appendChild(frame);
+
+        var pOpen = document.createElement('p');
+        pOpen.className = 'video-open';
+        var link = document.createElement('a');
+        link.href = 'https://drive.google.com/file/d/' + r.id + '/view';
+        link.target = '_blank';
+        link.rel = 'noopener noreferrer';
+        link.textContent = 'Open in Google Drive ↗';
+        pOpen.appendChild(link);
+        article.appendChild(pOpen);
+
+        return article;
+      }
+
+      if (featuredIndex >= 0) {
+        var featured = rows.splice(featuredIndex, 1)[0];
+        mount.appendChild(buildVideoCard(featured, 'video-featured'));
+      }
+
+      if (rows.length) {
+        var grid = document.createElement('div');
+        grid.className = 'video-grid';
+
+        for (var j = 0; j < rows.length; j++) {
+          var r = rows[j];
+          grid.appendChild(buildVideoCard(r));
+        }
+
+        mount.appendChild(grid);
+      }
+    })();
+  </script>
+
+</body>
+</html>

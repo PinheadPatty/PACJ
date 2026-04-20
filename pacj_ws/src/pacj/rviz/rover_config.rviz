@@ -5,8 +5,10 @@ Panels:
     Property Tree Widget:
       Expanded:
         - /Global Options1
+        - /Rover Path1
+        - /PoseWithCovariance1
       Splitter Ratio: 0.5
-    Tree Height: 187
+    Tree Height: 353
   - Class: rviz_common/Selection
     Name: Selection
   - Class: rviz_common/Tool Properties
@@ -22,7 +24,7 @@ Panels:
     Experimental: false
     Name: Time
     SyncMode: 0
-    SyncSource: ""
+    SyncSource: RTAB-Map Cloud
 Visualization Manager:
   Class: ""
   Displays:
@@ -42,57 +44,7 @@ Visualization Manager:
         Z: 0
       Plane: XY
       Plane Cell Count: 10
-      Reference Frame: drone/map
-      Value: true
-    - Class: rviz_default_plugins/InteractiveMarkers
-      Enable Transparency: true
-      Enabled: true
-      Interactive Markers Namespace: /drone_setpoint
-      Name: InteractiveMarkers
-      Show Axes: false
-      Show Descriptions: true
-      Show Visual Aids: false
-      Value: true
-    - Class: rviz_default_plugins/Marker
-      Enabled: true
-      Name: Drone Marker
-      Namespaces:
-        {}
-      Topic:
-        Depth: 5
-        Durability Policy: Volatile
-        Filter size: 10
-        History Policy: Keep Last
-        Reliability Policy: Reliable
-        Value: /drone_marker
-      Value: true
-    - Alpha: 1
-      Buffer Length: 1
-      Class: rviz_default_plugins/Path
-      Color: 0; 255; 0
-      Enabled: true
-      Head Diameter: 0.30000001192092896
-      Head Length: 0.20000000298023224
-      Length: 0.30000001192092896
-      Line Style: Lines
-      Line Width: 0.029999999329447746
-      Name: Planned Path
-      Offset:
-        X: 0
-        Y: 0
-        Z: 0
-      Pose Color: 255; 85; 255
-      Pose Style: None
-      Radius: 0.029999999329447746
-      Shaft Diameter: 0.10000000149011612
-      Shaft Length: 0.10000000149011612
-      Topic:
-        Depth: 5
-        Durability Policy: Volatile
-        Filter size: 10
-        History Policy: Keep Last
-        Reliability Policy: Reliable
-        Value: /planned_path
+      Reference Frame: rover/map
       Value: true
     - Alpha: 1
       Buffer Length: 1
@@ -104,7 +56,7 @@ Visualization Manager:
       Length: 0.30000001192092896
       Line Style: Lines
       Line Width: 0.029999999329447746
-      Name: Drone SLAM Path
+      Name: Rover Path
       Offset:
         X: 0
         Y: 0
@@ -120,7 +72,7 @@ Visualization Manager:
         Filter size: 10
         History Policy: Keep Last
         Reliability Policy: Reliable
-        Value: /drone/mapPath
+        Value: /rover/mapPath
       Value: true
     - Alpha: 1
       Autocompute Intensity Bounds: true
@@ -132,7 +84,7 @@ Visualization Manager:
       Channel Name: intensity
       Class: rviz_default_plugins/PointCloud2
       Color: 255; 255; 255
-      Color Transformer: ""
+      Color Transformer: RGB8
       Decay Time: 0
       Enabled: true
       Invert Rainbow: false
@@ -141,7 +93,7 @@ Visualization Manager:
       Min Color: 0; 0; 0
       Min Intensity: 0
       Name: RTAB-Map Cloud
-      Position Transformer: ""
+      Position Transformer: XYZ
       Selectable: true
       Size (Pixels): 3
       Size (m): 0.009999999776482582
@@ -151,7 +103,7 @@ Visualization Manager:
         Durability Policy: Volatile
         History Policy: Keep Last
         Reliability Policy: Reliable
-        Value: /drone/cloud_map
+        Value: /rover/cloud_map
       Use Fixed Frame: true
       Use rainbow: true
       Value: true
@@ -176,10 +128,10 @@ Visualization Manager:
           Value: true
         Value: true
       Enabled: true
-      Head Length: 0.30000001192092896
+      Head Length: 0.20000000298023224
       Head Radius: 0.10000000149011612
-      Name: Drone Pose
-      Shaft Length: 1
+      Name: PoseWithCovariance
+      Shaft Length: 0.5
       Shaft Radius: 0.05000000074505806
       Shape: Arrow
       Topic:
@@ -188,12 +140,12 @@ Visualization Manager:
         Filter size: 10
         History Policy: Keep Last
         Reliability Policy: Reliable
-        Value: /drone/localization_pose
+        Value: /rover/localization_pose
       Value: true
   Enabled: true
   Global Options:
     Background Color: 48; 48; 48
-    Fixed Frame: drone/map
+    Fixed Frame: rover/map
     Frame Rate: 30
   Name: root
   Tools:
@@ -201,13 +153,6 @@ Visualization Manager:
     - Class: rviz_default_plugins/Interact
       Hide Inactive Objects: true
     - Class: rviz_default_plugins/Select
-    - Class: rviz_default_plugins/SetGoal
-      Topic:
-        Depth: 5
-        Durability Policy: Volatile
-        History Policy: Keep Last
-        Reliability Policy: Reliable
-        Value: /drone/goal_pose
   Transformation:
     Current:
       Class: rviz_default_plugins/TF
@@ -223,14 +168,14 @@ Visualization Manager:
       Invert Z Axis: false
       Name: Current View
       Near Clip Distance: 0.009999999776482582
-      Pitch: 0.5352036356925964
+      Pitch: 0.6253161430358887
       Position:
-        X: -18.99999237060547
-        Y: 5
-        Z: 10
-      Target Frame: drone/map
+        X: -0.543823778629303
+        Y: 2.462775707244873
+        Z: 1.4294438362121582
+      Target Frame: rover/map
       Value: FPS (rviz_default_plugins)
-      Yaw: 5.938178539276123
+      Yaw: 4.801991939544678
     Saved:
       - Class: rviz_default_plugins/Orbit
         Distance: 10
@@ -249,7 +194,7 @@ Visualization Manager:
         Name: Orbit View
         Near Clip Distance: 0.009999999776482582
         Pitch: 0.7853981852531433
-        Target Frame: drone/map
+        Target Frame: rover/map
         Value: Orbit (rviz_default_plugins)
         Yaw: 0.7853981852531433
 Window Geometry:
@@ -258,7 +203,7 @@ Window Geometry:
   Height: 880
   Hide Left Dock: true
   Hide Right Dock: true
-  QMainWindow State: 000000ff00000000fd0000000200000000000003e300000312fc0200000004fb000000100044006900730070006c006100790073000000003f000000fb000000cc00fffffffb0000001200530065006c0065006300740069006f006e00000001400000012a0000005d00fffffffb0000001e0054006f006f006c002000500072006f00700065007200740069006500730000000270000000730000005d00fffffffb0000000800540069006d006500000002e9000000680000003c00ffffff000000010000019700000312fc0200000001fb0000000a00560069006500770073000000003f00000312000000a900ffffff000005a60000031200000004000000040000000800000008fc0000000100000002000000010000000a0054006f006f006c00730100000000ffffffff0000000000000000
+  QMainWindow State: 000000ff00000000fd00000002000000000000026f00000312fc0200000004fb000000100044006900730070006c006100790073000000003f000001a1000000cc00fffffffb0000001200530065006c0065006300740069006f006e00000001e6000000850000005d00fffffffb0000001e0054006f006f006c002000500072006f00700065007200740069006500730000000271000000840000005d00fffffffb0000000800540069006d006500000002fb000000560000003c00ffffff000000010000010000000312fc0200000001fb0000000a00560069006500770073000000003f00000312000000a900ffffff000005a60000031200000004000000040000000800000008fc0000000100000002000000010000000a0054006f006f006c00730100000000ffffffff0000000000000000
   Selection:
     collapsed: true
   Time:
