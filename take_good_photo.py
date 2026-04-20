@@ -53,7 +53,7 @@ RAW_ROW_WINDOW_START = 0
 # --- Vertical buffer / “wrap” (all in whole rows) ---
 # Half-frame reversal (DMA often delivers bottom half first): swap top/bottom halves
 # of the Bayer plane before any roll.
-SWAP_RAW_TOP_BOTTOM_HALVES = True
+SWAP_RAW_TOP_BOTTOM_HALVES = False
 
 # Fine alignment: shifts content along the vertical axis after the optional swap.
 # Positive = np.roll(..., +k, axis=0) moves row i to row i-k (content appears to
