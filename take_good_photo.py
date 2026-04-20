@@ -25,11 +25,11 @@ SENSOR_ANALOGUE_GAIN = 150
 SENSOR_DIGITAL_GAIN = 2000
 
 # --- Bayer demosaic (OpenCV): "rg" | "gr" | "bg" | "gb" ---
-BAYER_PATTERN = "gb"
+BAYER_PATTERN = "rg"
 
 # First row of the DMA buffer to treat as line 0 of the frame (use when the driver
 # stacks more lines than the nominal height, e.g. 720 for a second full frame).
-RAW_ROW_WINDOW_START = 0
+RAW_ROW_WINDOW_START = 1
 
 # --- Vertical buffer / “wrap” (all in whole rows) ---
 # Half-frame reversal (DMA often delivers bottom half first): swap top/bottom halves
