@@ -25,6 +25,10 @@ def generate_launch_description():
     )
 
     # --- SLAM ---
+    # rtabmap.launch.py defaults wire imu/gps/tags to GLOBAL names (/imu/data, /gps/fix,
+    # /detections, /user_data_async). With two robots on one DDS domain, both stacks would
+    # subscribe to the same topics — wrong. Point optional sensors at per-robot names; if
+    # nothing publishes there, those inputs are simply unused.
     drone_slam = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(rtabmap_launch_path),
         launch_arguments={
@@ -32,6 +36,13 @@ def generate_launch_description():
             'depth_topic': '/drone/depth/image_raw',
             'camera_info_topic': '/drone/color/camera_info',
             'namespace': 'drone',
+            'imu_topic': '/drone/imu/data',
+            'gps_topic': '/drone/gps/fix',
+            'tag_topic': '/drone/apriltag/detections',
+            'user_data_topic': '/drone/user_data',
+            'user_data_async_topic': '/drone/user_data_async',
+            'fiducial_topic': '/drone/fiducial_transforms',
+            'env_sensor_topic': '/drone/env_sensor',
             'odom_topic': '/drone/odom',
             'frame_id': 'drone_link',
             'odom_frame_id': 'drone/odom',
@@ -57,6 +68,13 @@ def generate_launch_description():
             'depth_topic': '/rover/depth/image_raw',
             'camera_info_topic': '/rover/color/camera_info',
             'namespace': 'rover',
+            'imu_topic': '/rover/imu/data',
+            'gps_topic': '/rover/gps/fix',
+            'tag_topic': '/rover/apriltag/detections',
+            'user_data_topic': '/rover/user_data',
+            'user_data_async_topic': '/rover/user_data_async',
+            'fiducial_topic': '/rover/fiducial_transforms',
+            'env_sensor_topic': '/rover/env_sensor',
             'odom_topic': '/rover/odom',
             'frame_id': 'rover_link',
             'odom_frame_id': 'rover/odom',
