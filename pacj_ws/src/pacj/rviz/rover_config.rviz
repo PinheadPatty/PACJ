@@ -1,0 +1,28 @@
+Panels:
+  - Class: rviz_common/Displays
+    Name: Displays
+
+Visualization Manager:
+  Class: ""
+
+  Displays:
+    - Class: rviz_default_plugins/Grid
+      Name: Grid
+      Enabled: true
+
+    - Class: rviz_default_plugins/PointCloud2
+      Name: PointCloud2
+      Topic:
+        Value: /rover/cloud_map
+      Enabled: true
+
+    - Class: rviz_default_plugins/Path
+      Name: Path
+      Topic:
+        Value: /rover/rtabmap/path
+      Enabled: true
+
+  Global Options:
+    Fixed Frame: rover/odom
+    Background Color: 48; 48; 48
+    Frame Rate: 30
