@@ -42,7 +42,7 @@ SWAP_RAW_TOP_BOTTOM_HALVES = True
 # Fine alignment: shifts content along the vertical axis after the optional swap.
 # Positive = np.roll(..., +k, axis=0) moves row i to row i-k (content appears to
 # shift down). Tune in ±1 steps, or jump by ~height//2 (e.g. 360 @ 720p) to explore.
-RAW_VERTICAL_ROLL_ROWS = 200
+RAW_VERTICAL_ROLL_ROWS = 400
 
 # Same two controls on the final BGR image (after demosaic). Usually leave off if
 # the raw-stage correction is enough.
