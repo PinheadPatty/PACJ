@@ -422,6 +422,21 @@ section {
   padding: 1rem;
 }
 
+.video-featured {
+  width: 100%;
+  padding: 1.25rem;
+}
+
+.video-featured h3 {
+  text-align: center;
+  font-size: 1.2rem;
+}
+
+.video-featured .video-desc,
+.video-featured .video-open {
+  text-align: center;
+}
+
 .video-card h3 {
   font-size: 1rem;
   margin-bottom: 0.35rem;
@@ -441,6 +456,10 @@ section {
   overflow: hidden;
   background: #0b0f14;
   border: 1px solid var(--color-border);
+}
+
+.video-featured .video-frame {
+  aspect-ratio: 21 / 9;
 }
 
 .video-card .video-frame iframe {
@@ -535,6 +554,10 @@ footer a:hover {
 
   .video-grid {
     grid-template-columns: 1fr;
+  }
+
+  .video-featured .video-frame {
+    aspect-ratio: 16 / 9;
   }
 
   .req-table {

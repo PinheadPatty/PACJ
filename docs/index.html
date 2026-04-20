@@ -527,11 +527,12 @@
       var PACJ_DRIVE_FOLDER_URL = '';
       var PACJ_DRIVE_DEMOS = [
         // Example (delete the leading // on each line to use it):
-        // {
-        //   title: 'End-to-end mission',
-        //   description: 'Startup, navigation, coupling, transport, and redeployment.',
-        //   driveUrlOrId: 'https://drive.google.com/file/d/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/view?usp=sharing',
-        // },
+        {
+          title: 'End-to-end mission',
+          description: 'Startup, navigation, coupling, transport, and redeployment.',
+          // change this URL
+          driveUrlOrId: 'https://drive.google.com/file/d/1YKTXYjdVCXmE2HAX65R3mgLhpUbCfmyh/view?usp=sharing',
+        },
         {
           title: 'Coupling Method CAD',
           description: "Display of our coupler's inner workings.",
@@ -555,7 +556,8 @@
         {
           title: 'Coupling',
           description: "Drone starting uncoupled and clearly being coupled from the rover.",
-          driveUrlOrId: '',
+          // change this URL
+          driveUrlOrId: 'https://drive.google.com/file/d/1YKTXYjdVCXmE2HAX65R3mgLhpUbCfmyh/view?usp=sharing',
         },
         {
           title: 'Uncoupling Test',
@@ -580,17 +582,20 @@
         {
           title: 'Coupled Takeoff',
           description: "The drone takes off while coupled to the rover, demonstrating sufficient thrust margin for vertical lift with payload.",
-          driveUrlOrId: '',
+          // change this URL
+          driveUrlOrId: 'https://drive.google.com/file/d/1YKTXYjdVCXmE2HAX65R3mgLhpUbCfmyh/view?usp=sharing',
         },
         {
           title: 'Assisted Precision Alignment (Drone to Rover)',
           description: "Drone flies over to the rover and descends for coupling, using downward camera feedback.",
-          driveUrlOrId: '',
+          // change this URL
+          driveUrlOrId: 'https://drive.google.com/file/d/1YKTXYjdVCXmE2HAX65R3mgLhpUbCfmyh/view?usp=sharing',
         },
         {
           title: 'Coupled Swing Test',
           description: "Drone lifts the rover and performs a swing test for oscillation checking and coupling integrity.",
-          driveUrlOrId: '',
+          // change this URL
+          driveUrlOrId: 'https://drive.google.com/file/d/1YKTXYjdVCXmE2HAX65R3mgLhpUbCfmyh/view?usp=sharing',
         },
       ];
 
@@ -610,12 +615,16 @@
       if (!mount) return;
 
       var rows = [];
+      var featuredIndex = -1;
       for (var i = 0; i < PACJ_DRIVE_DEMOS.length; i++) {
         var item = PACJ_DRIVE_DEMOS[i];
         var id = parseDriveFileId(item.driveUrlOrId);
         var title = (item.title && String(item.title).trim()) || 'Demo clip';
         if (!id) continue;
         rows.push({ id: id, title: title, description: (item.description && String(item.description)) || '' });
+        if (featuredIndex === -1 && /end[\s-]*to[\s-]*end mission/i.test(title)) {
+          featuredIndex = rows.length - 1;
+        }
       }
 
       if (PACJ_DRIVE_FOLDER_URL && String(PACJ_DRIVE_FOLDER_URL).trim()) {
@@ -647,13 +656,9 @@
         return;
       }
 
-      var grid = document.createElement('div');
-      grid.className = 'video-grid';
-
-      for (var j = 0; j < rows.length; j++) {
-        var r = rows[j];
+      function buildVideoCard(r, extraClass) {
         var article = document.createElement('article');
-        article.className = 'video-card';
+        article.className = 'video-card' + (extraClass ? ' ' + extraClass : '');
 
         var h3 = document.createElement('h3');
         h3.textContent = r.title;
@@ -687,10 +692,25 @@
         pOpen.appendChild(link);
         article.appendChild(pOpen);
 
-        grid.appendChild(article);
+        return article;
       }
 
-      mount.appendChild(grid);
+      if (featuredIndex >= 0) {
+        var featured = rows.splice(featuredIndex, 1)[0];
+        mount.appendChild(buildVideoCard(featured, 'video-featured'));
+      }
+
+      if (rows.length) {
+        var grid = document.createElement('div');
+        grid.className = 'video-grid';
+
+        for (var j = 0; j < rows.length; j++) {
+          var r = rows[j];
+          grid.appendChild(buildVideoCard(r));
+        }
+
+        mount.appendChild(grid);
+      }
     })();
   </script>
 
