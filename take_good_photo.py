@@ -28,6 +28,13 @@ SENSOR_EXPOSURE = 1200
 SENSOR_ANALOGUE_GAIN = 150
 SENSOR_DIGITAL_GAIN = 2000
 
+# Capture this many frames in one v4l2 stream; stale data is often only in the first.
+# Use 2 so the first frame is dropped and the file keeps the latest (see v4l2-ctl docs).
+# If your driver instead *concatenates* frames in the file, enable
+# V4L2_PREFER_LAST_FRAME_IF_DOUBLED so we read the last height rows.
+V4L2_STREAM_COUNT = 2
+V4L2_PREFER_LAST_FRAME_IF_DOUBLED = True
+
 # --- Bayer demosaic (OpenCV): "rg" | "gr" | "bg" | "gb" ---
 # Base sensor layout. If BAYER_ROW_PHASE_COMPENSATE is True, "rg"<->"gr" and "bg"<->"gb"
 # are chosen automatically when RAW_VERTICAL_ROLL_ROWS is odd (vertical roll by 1 row
@@ -209,7 +216,7 @@ def _capture_one_frame(video: str, subdev: str, raw_path: str) -> bool:
             video,
             "--set-fmt-video=width=1280,height=720,pixelformat=RG10",
             "--stream-mmap",
-            "--stream-count=1",
+            f"--stream-count={max(1, int(V4L2_STREAM_COUNT))}",
             f"--stream-to={raw_path}",
         ],
         check=False,
@@ -224,6 +231,15 @@ def _load_raw_for_processing(
     qw, qh, qbpl = _query_v4l2_video_format(video)
     width, height = qw or 1280, qh or 720
     raw, dbg = _load_raw10_planar_slice(raw_path, width, height, qbpl, RAW_ROW_WINDOW_START)
+    if (
+        V4L2_STREAM_COUNT > 1
+        and V4L2_PREFER_LAST_FRAME_IF_DOUBLED
+        and RAW_ROW_WINDOW_START == 0
+        and dbg["total_lines"] >= 2 * height
+        and dbg["total_lines"] % height == 0
+    ):
+        last_off = dbg["total_lines"] - height
+        raw, dbg = _load_raw10_planar_slice(raw_path, width, height, qbpl, last_off)
     return raw, dbg, width, height
 
 
