@@ -65,6 +65,7 @@ MANUAL_R_GAIN = 1.0
 
 _SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 _GOOD_OUTPUT_DIR = os.path.join(_SCRIPT_DIR, "good_photo_captures")
+_ROLL_SWEEP_DIR = os.path.join(_GOOD_OUTPUT_DIR, "roll_sweep")
 
 
 def _next_good_photo_path() -> str:
@@ -151,6 +152,105 @@ def _apply_vertical_geometry_2d(plane: np.ndarray, swap_halves: bool, roll_rows:
     return out
 
 
+def _capture_one_frame(video: str, subdev: str, raw_path: str) -> bool:
+    subprocess.run(
+        [
+            "v4l2-ctl",
+            "-d",
+            subdev,
+            "-c",
+            f"exposure={SENSOR_EXPOSURE},analogue_gain={SENSOR_ANALOGUE_GAIN},digital_gain={SENSOR_DIGITAL_GAIN}",
+        ],
+        check=False,
+    )
+    subprocess.run(
+        [
+            "v4l2-ctl",
+            "-d",
+            video,
+            "--set-fmt-video=width=1280,height=720,pixelformat=RG10",
+            "--stream-mmap",
+            "--stream-count=1",
+            f"--stream-to={raw_path}",
+        ],
+        check=False,
+    )
+    return os.path.exists(raw_path)
+
+
+def _load_raw_for_processing(
+    raw_path: str, video: str
+) -> Tuple[np.ndarray, dict, int, int]:
+    """Return (raw slice, dbg, width, height)."""
+    qw, qh, qbpl = _query_v4l2_video_format(video)
+    width, height = qw or 1280, qh or 720
+    raw, dbg = _load_raw10_planar_slice(raw_path, width, height, qbpl, RAW_ROW_WINDOW_START)
+    return raw, dbg, width, height
+
+
+def _raw_to_bgr(raw: np.ndarray, raw_vertical_roll_rows: int) -> np.ndarray:
+    """Apply geometry (with given raw roll), debayer, and BGR-stage geometry."""
+    raw = _apply_vertical_geometry_2d(
+        raw, SWAP_RAW_TOP_BOTTOM_HALVES, raw_vertical_roll_rows
+    )
+    img8 = ((raw & 0x3FF) >> 2).astype(np.uint8)
+    out = _debayer_and_grade_tuned(img8, _BAYER_CODES[BAYER_PATTERN])
+    out = _apply_vertical_geometry_2d(
+        out, SWAP_BGR_TOP_BOTTOM_HALVES, BGR_VERTICAL_ROLL_ROWS
+    )
+    return out
+
+
+def sweep_raw_vertical_roll_rows(
+    start: int = 550,
+    end: int = 600,
+    step: int = 1,
+    *,
+    video: str = "/dev/video0",
+    subdev: str = "/dev/v4l-subdev0",
+    raw_out: str = "test_raw_auto.bin",
+    fresh_capture_per_frame: bool = False,
+    verbose: bool = False,
+) -> list[str]:
+    """
+    Save one JPEG per roll value, varying only RAW_VERTICAL_ROLL_ROWS (same raw buffer
+    unless fresh_capture_per_frame is True). Inclusive ``start``..``end`` with ``step``.
+
+    Files go to ``good_photo_captures/roll_sweep/roll_XXXX.jpg`` (XXXX = roll value).
+    """
+    if start > end:
+        raise ValueError("start must be <= end")
+    if step <= 0:
+        raise ValueError("step must be positive")
+
+    if BAYER_PATTERN not in _BAYER_CODES:
+        raise ValueError(f"Invalid BAYER_PATTERN {BAYER_PATTERN!r}")
+
+    os.makedirs(_ROLL_SWEEP_DIR, exist_ok=True)
+
+    saved: list[str] = []
+    raw: Optional[np.ndarray] = None
+    dbg: Optional[dict] = None
+
+    rolls = range(start, end + 1, step)
+
+    for roll in rolls:
+        if fresh_capture_per_frame or raw is None:
+            if not _capture_one_frame(video, subdev, raw_out):
+                raise RuntimeError(f"Capture failed (missing {raw_out})")
+            raw, dbg, _w, _h = _load_raw_for_processing(raw_out, video)
+            if verbose and dbg is not None:
+                print(f"roll={roll} buffer:", dbg)
+        assert raw is not None
+        out = _raw_to_bgr(raw, roll)
+        path = os.path.join(_ROLL_SWEEP_DIR, f"roll_{roll:04d}.jpg")
+        cv2.imwrite(path, out)
+        saved.append(path)
+        print(path)
+
+    return saved
+
+
 def _debayer_and_grade_tuned(img8: np.ndarray, bayer_code: int) -> np.ndarray:
     color = cv2.cvtColor(img8, bayer_code)
 
@@ -202,46 +302,54 @@ def main(argv: list[str]) -> int:
         action="store_true",
         help="Print inferred buffer geometry.",
     )
+    parser.add_argument(
+        "--sweep-vertical-roll",
+        nargs=2,
+        type=int,
+        metavar=("START", "END"),
+        help="Save a JPEG per roll value (inclusive) to good_photo_captures/roll_sweep/.",
+    )
+    parser.add_argument(
+        "--sweep-vertical-roll-step",
+        type=int,
+        default=1,
+        help="Step between roll values (default 1).",
+    )
+    parser.add_argument(
+        "--sweep-fresh-capture",
+        action="store_true",
+        help="With --sweep-vertical-roll, capture a new frame for every roll (default: one capture).",
+    )
     args = parser.parse_args(argv)
-
-    subprocess.run(
-        [
-            "v4l2-ctl",
-            "-d",
-            args.subdev,
-            "-c",
-            f"exposure={SENSOR_EXPOSURE},analogue_gain={SENSOR_ANALOGUE_GAIN},digital_gain={SENSOR_DIGITAL_GAIN}",
-        ],
-        check=False,
-    )
-    subprocess.run(
-        [
-            "v4l2-ctl",
-            "-d",
-            args.video,
-            "--set-fmt-video=width=1280,height=720,pixelformat=RG10",
-            "--stream-mmap",
-            "--stream-count=1",
-            f"--stream-to={args.raw_out}",
-        ],
-        check=False,
-    )
-
-    if not os.path.exists(args.raw_out):
-        print("Capture failed (raw file missing)", file=sys.stderr)
-        return 1
 
     if BAYER_PATTERN not in _BAYER_CODES:
         print(f"Invalid BAYER_PATTERN {BAYER_PATTERN!r}", file=sys.stderr)
         return 1
 
-    qw, qh, qbpl = _query_v4l2_video_format(args.video)
-    width, height = qw or 1280, qh or 720
+    if args.sweep_vertical_roll is not None:
+        lo, hi = args.sweep_vertical_roll
+        try:
+            sweep_raw_vertical_roll_rows(
+                lo,
+                hi,
+                args.sweep_vertical_roll_step,
+                video=args.video,
+                subdev=args.subdev,
+                raw_out=args.raw_out,
+                fresh_capture_per_frame=args.sweep_fresh_capture,
+                verbose=args.verbose,
+            )
+        except (ValueError, RuntimeError) as e:
+            print(e, file=sys.stderr)
+            return 1
+        return 0
+
+    if not _capture_one_frame(args.video, args.subdev, args.raw_out):
+        print("Capture failed (raw file missing)", file=sys.stderr)
+        return 1
 
     try:
-        raw, dbg = _load_raw10_planar_slice(
-            args.raw_out, width, height, qbpl, RAW_ROW_WINDOW_START
-        )
+        raw, dbg, _width, height = _load_raw_for_processing(args.raw_out, args.video)
     except ValueError as e:
         print(f"Raw layout error: {e}", file=sys.stderr)
         return 1
@@ -255,14 +363,7 @@ def main(argv: list[str]) -> int:
             file=sys.stderr,
         )
 
-    raw = _apply_vertical_geometry_2d(
-        raw, SWAP_RAW_TOP_BOTTOM_HALVES, RAW_VERTICAL_ROLL_ROWS
-    )
-    img8 = ((raw & 0x3FF) >> 2).astype(np.uint8)
-    out = _debayer_and_grade_tuned(img8, _BAYER_CODES[BAYER_PATTERN])
-    out = _apply_vertical_geometry_2d(
-        out, SWAP_BGR_TOP_BOTTOM_HALVES, BGR_VERTICAL_ROLL_ROWS
-    )
+    out = _raw_to_bgr(raw, RAW_VERTICAL_ROLL_ROWS)
 
     out_path = _next_good_photo_path()
     cv2.imwrite(out_path, out)
