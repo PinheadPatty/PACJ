@@ -52,7 +52,7 @@ def generate_launch_description():
             'approx_sync': 'true',
             'approx_sync_max_interval': '0.2',
             # Must match rgb/depth_image_transport: enables image_transport republish in rtabmap.launch.py
-            'compressed': 'true',
+            'compressed': 'false',
             'rgb_image_transport': 'compressed',
             'depth_image_transport': 'compressedDepth',
             'qos': '1',
@@ -84,7 +84,7 @@ def generate_launch_description():
             'map_frame_id': 'rover/map',
             'approx_sync': 'true',
             'approx_sync_max_interval': '0.2',
-            'compressed': 'true',
+            'compressed': 'false',
             'rgb_image_transport': 'compressed',
             'depth_image_transport': 'compressedDepth',
             'qos': '1',
