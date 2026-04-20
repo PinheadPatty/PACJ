@@ -8,8 +8,12 @@ Default board matches an 8x5 ChArUco grid, 4x4 ArUco markers, 30 mm squares,
 Usage (offline, recommended):
   python scripts/charuco_cam_calibrate.py --images-dir ./calib_frames
 
-Usage (ROS 2, optional — saves PNGs when detection succeeds):
+Usage (ROS 2 headless — saves PNGs when detection succeeds):
   python scripts/charuco_cam_calibrate.py --ros-topic /your/camera/image_raw \\
+      --ros-save-dir ./calib_frames --ros-target 40
+
+Usage (ROS 2 live GUI — preview, periodic auto-capture, thumbnails):
+  python scripts/charuco_cam_calibrate.py --ros-topic /your/camera/image_raw --ros-live \\
       --ros-save-dir ./calib_frames --ros-target 40
 
 Requires OpenCV *contrib* Python bindings (aruco lives in contrib):
@@ -219,6 +223,75 @@ def _count_charuco_corners(
     return n if n >= int(min_corners) else 0
 
 
+def _charuco_overlay(
+    bgr: np.ndarray,
+    board: Any,
+    dictionary: Any,
+    params: Any,
+) -> Tuple[int, np.ndarray]:
+    """
+    Draw ChArUco / marker overlay on a copy of bgr.
+    Returns (num_charuco_corners_after_interpolation, vis_bgr). If interpolation fails
+    but markers exist, returns (0, vis) with markers drawn when possible.
+    """
+    gray = cv2.cvtColor(bgr, cv2.COLOR_BGR2GRAY)
+    vis = bgr.copy()
+    corners, ids, _ = _detect_markers(gray, dictionary, params)
+    n = 0
+    if ids is None or len(ids) == 0:
+        return 0, vis
+    ret, char_corners, char_ids = _interpolate_charuco(corners, ids, gray, board)
+    if ret and char_ids is not None and char_corners is not None:
+        n = int(len(char_ids))
+        if hasattr(cv2.aruco, "drawDetectedCornersCharuco"):
+            cv2.aruco.drawDetectedCornersCharuco(vis, char_corners, char_ids)
+        else:
+            cv2.aruco.drawDetectedMarkers(vis, corners, ids)
+    else:
+        cv2.aruco.drawDetectedMarkers(vis, corners, ids)
+    return n, vis
+
+
+def _compose_live_view(
+    vis: np.ndarray,
+    thumbs: Sequence[np.ndarray],
+    *,
+    captured: int,
+    target: int,
+    n_corners: int,
+    min_corners: int,
+    require_charuco: bool,
+    period_s: float,
+    next_auto_label: str,
+    hint: str,
+) -> np.ndarray:
+    """Stack main view + thumbnail strip + status bar."""
+    h, w = vis.shape[:2]
+    thumb_h = 90
+    bar = np.zeros((thumb_h, w, 3), dtype=np.uint8)
+    if thumbs:
+        tw = max(1, w // max(1, len(thumbs)))
+        x = 0
+        for t in thumbs:
+            small = cv2.resize(t, (tw, thumb_h), interpolation=cv2.INTER_AREA)
+            x1 = min(x + tw, w)
+            piece_w = x1 - x
+            bar[:, x:x1] = small[:, :piece_w]
+            x = x1
+            if x >= w:
+                break
+    status_h = 48
+    status = np.zeros((status_h, w, 3), dtype=np.uint8)
+    ok = (not require_charuco) or (n_corners >= min_corners)
+    col = (0, 220, 0) if ok else (0, 120, 255)
+    need = f"(need {min_corners}+)" if require_charuco else "(--ros-any-frame)"
+    t1 = f"ChArUco corners: {n_corners} {need}   Captured: {captured}/{target}"
+    t2 = f"Auto every {period_s:.1f}s (next {next_auto_label})   {hint}"
+    cv2.putText(status, t1, (8, 22), cv2.FONT_HERSHEY_SIMPLEX, 0.55, col, 1, cv2.LINE_AA)
+    cv2.putText(status, t2, (8, 42), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (240, 240, 240), 1, cv2.LINE_AA)
+    return np.vstack([vis, bar, status])
+
+
 def _try_ros2_capture(args: argparse.Namespace) -> List[np.ndarray]:
     try:
         import rclpy
@@ -345,6 +418,201 @@ def _try_ros2_capture(args: argparse.Namespace) -> List[np.ndarray]:
     return frames
 
 
+def _try_ros2_capture_live(args: argparse.Namespace) -> List[np.ndarray]:
+    """Interactive ROS capture: live preview, periodic auto-capture, thumbnails, keyboard controls."""
+    try:
+        import rclpy
+        from rclpy.node import Node
+        from rclpy.qos import qos_profile_sensor_data
+        from sensor_msgs.msg import CompressedImage, Image
+    except ImportError as e:
+        raise SystemExit(
+            "ROS 2 capture requested but rclpy/sensor_msgs are not available in this environment.\n"
+            f"Import error: {e}"
+        ) from e
+
+    try:
+        from cv_bridge import CvBridge
+    except ImportError as e:
+        raise SystemExit(
+            "ROS 2 capture needs cv_bridge in the same Python environment.\n" f"Import error: {e}"
+        ) from e
+
+    topic: str = args.ros_topic
+    save_dir: Optional[Path] = Path(args.ros_save_dir) if args.ros_save_dir else None
+    if save_dir:
+        save_dir.mkdir(parents=True, exist_ok=True)
+
+    square_m = float(args.square_mm) / 1000.0
+    marker_m = float(args.marker_mm) / 1000.0
+    dict_id = _dict_id_from_name(str(args.dict_name))
+    dictionary = _get_predefined_dictionary(dict_id)
+    board = _make_charuco_board(
+        int(args.squares_x),
+        int(args.squares_y),
+        square_m,
+        marker_m,
+        dictionary,
+    )
+    params = _default_detector_params()
+    min_corners = int(args.min_charuco_corners)
+    require_charuco = not bool(args.ros_any_frame)
+
+    target = int(args.ros_target)
+    period_s = float(args.ros_live_period_s)
+    timeout_s = float(args.ros_timeout_s)
+    max_thumbs = max(1, int(args.ros_live_thumbs))
+    win_name = str(args.ros_live_window) or "ChArUco calibration"
+
+    rclpy.init()
+    bridge = CvBridge()
+    frames: List[np.ndarray] = []
+    thumbs: List[np.ndarray] = []
+
+    class _Latest(Node):
+        def __init__(self) -> None:
+            super().__init__("charuco_cam_calibrate_live")
+            self._bridge = bridge
+            self._latest: Optional[np.ndarray] = None
+            if "/compressed" in topic or topic.endswith("/compressed"):
+                self.create_subscription(
+                    CompressedImage,
+                    topic,
+                    self._on_compressed,
+                    qos_profile=qos_profile_sensor_data,
+                )
+            else:
+                self.create_subscription(
+                    Image,
+                    topic,
+                    self._on_raw,
+                    qos_profile=qos_profile_sensor_data,
+                )
+
+        def _on_raw(self, msg: Image) -> None:
+            try:
+                self._latest = self._bridge.imgmsg_to_cv2(msg, desired_encoding="bgr8")
+            except Exception as ex:
+                self.get_logger().error(f"cv_bridge failed: {ex}")
+
+        def _on_compressed(self, msg: CompressedImage) -> None:
+            try:
+                self._latest = self._bridge.compressed_imgmsg_to_cv2(msg, desired_encoding="bgr8")
+            except Exception as ex:
+                self.get_logger().error(f"cv_bridge failed: {ex}")
+
+    node = _Latest()
+
+    def push_capture(bgr: np.ndarray, reason: str) -> None:
+        frames.append(bgr.copy())
+        idx = len(frames)
+        t = cv2.resize(bgr, (160, 120), interpolation=cv2.INTER_AREA)
+        thumbs.append(t)
+        while len(thumbs) > max_thumbs:
+            thumbs.pop(0)
+        node.get_logger().info(f"Captured {idx}/{target} ({reason})")
+        if save_dir is not None:
+            out = save_dir / f"frame_{idx:04d}.png"
+            cv2.imwrite(str(out), bgr)
+
+    print(f"[ros-live] Window: {win_name!r}  topic: {topic!r}")
+    print(f"[ros-live] Target {target} frames; auto-capture every {period_s:.2f}s when view is good.")
+    print("[ros-live] Keys: [space] snap now   [q] finish (needs >=3 frames)   [Esc] abort")
+    if require_charuco:
+        print(f"[ros-live] Requires >= {min_corners} ChArUco corners per saved frame (or use --ros-any-frame).")
+
+    start = time.time()
+    last_auto = time.time()
+
+    try:
+        while rclpy.ok():
+            rclpy.spin_once(node, timeout_sec=0.01)
+            now = time.time()
+            if now - start > timeout_s:
+                print("[ros-live] Timeout reached.")
+                break
+
+            if node._latest is None:
+                blank = np.zeros((480, 640, 3), dtype=np.uint8)
+                cv2.putText(
+                    blank,
+                    "Waiting for images...",
+                    (120, 240),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    0.8,
+                    (200, 200, 200),
+                    2,
+                    cv2.LINE_AA,
+                )
+                cv2.imshow(win_name, blank)
+                key = cv2.waitKey(1) & 0xFF
+                if key == 27:
+                    raise SystemExit("[ros-live] Aborted (Esc).")
+                if key in (ord("q"), ord("Q")) and len(frames) >= 3:
+                    break
+                continue
+
+            bgr = node._latest
+            n, vis = _charuco_overlay(bgr, board, dictionary, params)
+            capture_ok = True
+            if require_charuco:
+                capture_ok = n >= min_corners
+
+            if capture_ok:
+                next_lbl = f"{max(0.0, period_s - (now - last_auto)):.1f}s"
+            else:
+                next_lbl = "waiting for board"
+            if capture_ok and len(frames) < target and (now - last_auto) >= period_s:
+                push_capture(bgr, "auto")
+                last_auto = now
+
+            hint = "[space] snap  [q] finish  [Esc] abort"
+
+            composed = _compose_live_view(
+                vis,
+                thumbs,
+                captured=len(frames),
+                target=target,
+                n_corners=n,
+                min_corners=min_corners,
+                require_charuco=require_charuco,
+                period_s=period_s,
+                next_auto_label=next_lbl,
+                hint=hint,
+            )
+            cv2.imshow(win_name, composed)
+
+            key = cv2.waitKey(1) & 0xFF
+            if key == 27:
+                raise SystemExit("[ros-live] Aborted (Esc).")
+            if key == ord(" ") and len(frames) < target and capture_ok:
+                push_capture(bgr, "manual")
+                last_auto = now
+            if key in (ord("q"), ord("Q")):
+                if len(frames) >= 3:
+                    break
+                print("[ros-live] Need at least 3 captured frames before finishing (keep going or press Esc).")
+
+            if len(frames) >= target:
+                print(f"[ros-live] Reached target ({target}). Finishing capture.")
+                break
+    finally:
+        try:
+            cv2.destroyWindow(win_name)
+        except cv2.error:
+            pass
+        cv2.waitKey(1)
+        node.destroy_node()
+        rclpy.shutdown()
+
+    if len(frames) < 3:
+        raise SystemExit(
+            f"Too few ROS live frames collected ({len(frames)}). Capture more views, relax "
+            f"--min-charuco-corners, increase --ros-timeout-s, or verify board parameters."
+        )
+    return frames
+
+
 def run_calibration(
     images_bgr: Sequence[np.ndarray],
     squares_x: int,
@@ -432,6 +700,29 @@ def main() -> None:
         action="store_true",
         help="ROS mode: capture consecutive frames without requiring ChArUco detection (usually worse for calibration).",
     )
+    p.add_argument(
+        "--ros-live",
+        action="store_true",
+        help="ROS mode: open a live window with overlays, periodic auto-capture, and thumbnail strip.",
+    )
+    p.add_argument(
+        "--ros-live-period-s",
+        type=float,
+        default=1.5,
+        help="ROS live: minimum seconds between automatic captures when the view is good.",
+    )
+    p.add_argument(
+        "--ros-live-window",
+        type=str,
+        default="ChArUco calibration",
+        help="ROS live: OpenCV window title.",
+    )
+    p.add_argument(
+        "--ros-live-thumbs",
+        type=int,
+        default=8,
+        help="ROS live: max thumbnails in the filmstrip.",
+    )
 
     p.add_argument("--squares-x", type=int, default=8, help="ChArUco squares in X (default 8).")
     p.add_argument("--squares-y", type=int, default=5, help="ChArUco squares in Y (default 5).")
@@ -453,6 +744,8 @@ def main() -> None:
         p.error("Provide either --images-dir or --ros-topic.")
     if args.images_dir and args.ros_topic:
         p.error("Choose one input mode: --images-dir OR --ros-topic (not both).")
+    if args.images_dir and bool(args.ros_live):
+        p.error("--ros-live only applies to ROS capture; do not combine with --images-dir.")
 
     square_m = float(args.square_mm) / 1000.0
     marker_m = float(args.marker_mm) / 1000.0
@@ -462,7 +755,10 @@ def main() -> None:
     if args.images_dir:
         images = _gather_images_from_dir(Path(args.images_dir))
     else:
-        images = _try_ros2_capture(args)
+        if bool(args.ros_live):
+            images = _try_ros2_capture_live(args)
+        else:
+            images = _try_ros2_capture(args)
 
     preview = Path(args.preview_path) if str(args.preview_path).strip() else None
 
