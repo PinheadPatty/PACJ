@@ -12,7 +12,7 @@ def generate_launch_description():
     drone_camera = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(orbbec_launch_path),
         launch_arguments={
-            'camera_name': 'drone',
+            'camera_name': 'rover',
             'enable_sync': 'true',
             'depth_registration': 'true',
             'enable_color': 'true',
@@ -20,10 +20,10 @@ def generate_launch_description():
             # --- New "Lower CPU" Settings ---
             'color_width': '424',
             'color_height': '240',
-            'color_fps': '10',
+            'color_fps': '15',
             'depth_width': '424',
-            'depth_height': '240',
-            'depth_fps': '10',
+            'depth_height': '266',
+            'depth_fps': '15',
             'color_format': 'MJPEG',          # High compression to save USB bandwidth
             'enable_point_cloud': 'false',    # Let RTAB-Map handle the 3D math instead
             # --------------------------------
@@ -39,5 +39,5 @@ def generate_launch_description():
 
     return LaunchDescription([
         drone_camera,
-        drone_driver,
+#        drone_driver,
     ])
