@@ -2,6 +2,10 @@
 Capture RG10 via v4l2, repair common buffer layout issues, demosaic, save JPEG.
 
 Edit the TUNING block below; command-line flags only override paths and verbosity.
+
+Discoloration (magenta/green, mesh): often an *odd* RAW_VERTICAL_ROLL_ROWS with the wrong
+Bayer line phase vs OpenCV — enable BAYER_ROW_PHASE_COMPENSATE, or use an even roll, or
+tune RAW_COLUMN_SHIFT_COLS / BAYER_PATTERN / DEMOSAIC_QUALITY.
 """
 
 import argparse
@@ -25,7 +29,19 @@ SENSOR_ANALOGUE_GAIN = 150
 SENSOR_DIGITAL_GAIN = 2000
 
 # --- Bayer demosaic (OpenCV): "rg" | "gr" | "bg" | "gb" ---
+# Base sensor layout. If BAYER_ROW_PHASE_COMPENSATE is True, "rg"<->"gr" and "bg"<->"gb"
+# are chosen automatically when RAW_VERTICAL_ROLL_ROWS is odd (vertical roll by 1 row
+# swaps R vs G lines vs what OpenCV expects — common cause of magenta/green + mesh).
 BAYER_PATTERN = "rg"
+
+# Flip rg<->gr / bg<->gb when vertical roll is odd (set False only if you tune roll+pattern together).
+BAYER_ROW_PHASE_COMPENSATE = True
+
+# Horizontal shift of the Bayer grid in pixels (-1, 0, +1). Try ±1 if color is still wrong.
+RAW_COLUMN_SHIFT_COLS = 0
+
+# Demosaic: "fast" (default OpenCV), "ea" edge-aware, "vng" (slower, often fewer false colors).
+DEMOSAIC_QUALITY = "ea"
 
 # First row of the DMA buffer to use as the top of the frame. Must satisfy:
 #   RAW_ROW_WINDOW_START + frame_height <= total_lines_in_file
@@ -51,7 +67,7 @@ BGR_VERTICAL_ROLL_ROWS = 0
 
 # --- Color / toning (after demosaic) ---
 TARGET_LUMA_MEAN = 120.0  # higher → brighter overall
-SATURATION_MULTIPLIER = 1.2  # 1.0 = no change; <1 mutes, >1 boosts color
+SATURATION_MULTIPLIER = 1.05  # lower reduces false-color pop after bad demosaic (was 1.2)
 
 # Simple gray-world style balance; set False to only scale brightness uniformly.
 ENABLE_SIMPLE_AWB = True
@@ -66,6 +82,29 @@ MANUAL_R_GAIN = 1.0
 _SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 _GOOD_OUTPUT_DIR = os.path.join(_SCRIPT_DIR, "good_photo_captures")
 _ROLL_SWEEP_DIR = os.path.join(_GOOD_OUTPUT_DIR, "roll_sweep")
+
+# Odd vertical np.roll(..., axis=0) swaps R vs G lines vs OpenCV's BayerRG/GR/etc. naming.
+_BAYER_ROW_FLIP = {"rg": "gr", "gr": "rg", "bg": "gb", "gb": "bg"}
+
+
+def _resolved_bayer_pattern(raw_vertical_roll_rows: int) -> str:
+    key = BAYER_PATTERN
+    if BAYER_ROW_PHASE_COMPENSATE and (raw_vertical_roll_rows % 2) != 0:
+        key = _BAYER_ROW_FLIP.get(key, key)
+    return key
+
+
+def _bayer_cv2_code(pattern_key: str, quality: str) -> int:
+    q = (quality or "fast").lower()
+    if q == "fast":
+        return _BAYER_CODES[pattern_key]
+    if q not in ("ea", "vng"):
+        return _BAYER_CODES[pattern_key]
+    const_name = f"COLOR_Bayer{pattern_key.upper()}2BGR_{q.upper()}"
+    code = getattr(cv2, const_name, None)
+    if code is not None:
+        return int(code)
+    return _BAYER_CODES[pattern_key]
 
 
 def _next_good_photo_path() -> str:
@@ -194,7 +233,11 @@ def _raw_to_bgr(raw: np.ndarray, raw_vertical_roll_rows: int) -> np.ndarray:
         raw, SWAP_RAW_TOP_BOTTOM_HALVES, raw_vertical_roll_rows
     )
     img8 = ((raw & 0x3FF) >> 2).astype(np.uint8)
-    out = _debayer_and_grade_tuned(img8, _BAYER_CODES[BAYER_PATTERN])
+    if RAW_COLUMN_SHIFT_COLS:
+        img8 = np.roll(img8, RAW_COLUMN_SHIFT_COLS, axis=1)
+    pattern_key = _resolved_bayer_pattern(raw_vertical_roll_rows)
+    bayer_code = _bayer_cv2_code(pattern_key, DEMOSAIC_QUALITY)
+    out = _debayer_and_grade_tuned(img8, bayer_code)
     out = _apply_vertical_geometry_2d(
         out, SWAP_BGR_TOP_BOTTOM_HALVES, BGR_VERTICAL_ROLL_ROWS
     )
