@@ -27,9 +27,12 @@ SENSOR_DIGITAL_GAIN = 2000
 # --- Bayer demosaic (OpenCV): "rg" | "gr" | "bg" | "gb" ---
 BAYER_PATTERN = "rg"
 
-# First row of the DMA buffer to treat as line 0 of the frame (use when the driver
-# stacks more lines than the nominal height, e.g. 720 for a second full frame).
-RAW_ROW_WINDOW_START = 1
+# First row of the DMA buffer to use as the top of the frame. Must satisfy:
+#   RAW_ROW_WINDOW_START + frame_height <= total_lines_in_file
+# For a normal 720-line capture, only 0 is valid. Use 720 when the buffer has
+# 1440 lines (two stacked frames). For a 1-row *alignment* nudge, use
+# RAW_VERTICAL_ROLL_ROWS instead — do not use this constant for that.
+RAW_ROW_WINDOW_START = 0
 
 # --- Vertical buffer / “wrap” (all in whole rows) ---
 # Half-frame reversal (DMA often delivers bottom half first): swap top/bottom halves
@@ -39,7 +42,7 @@ SWAP_RAW_TOP_BOTTOM_HALVES = True
 # Fine alignment: shifts content along the vertical axis after the optional swap.
 # Positive = np.roll(..., +k, axis=0) moves row i to row i-k (content appears to
 # shift down). Tune in ±1 steps, or jump by ~height//2 (e.g. 360 @ 720p) to explore.
-RAW_VERTICAL_ROLL_ROWS = 0
+RAW_VERTICAL_ROLL_ROWS = 1
 
 # Same two controls on the final BGR image (after demosaic). Usually leave off if
 # the raw-stage correction is enough.
@@ -119,7 +122,10 @@ def _load_raw10_planar_slice(
     if row_offset < 0 or row_offset + height > total_lines:
         raise ValueError(
             f"row window [{row_offset}:{row_offset + height}) out of range "
-            f"(buffer has {total_lines} lines of {bpl} bytes each)"
+            f"(buffer has {total_lines} lines of {bpl} bytes each). "
+            f"Need total_lines >= {row_offset + height}. "
+            "If you only want to shift the picture by a few rows, set "
+            "RAW_ROW_WINDOW_START=0 and tune RAW_VERTICAL_ROLL_ROWS instead."
         )
     raw = raw_full[row_offset : row_offset + height, :width]
     dbg = {
