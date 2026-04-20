@@ -13,14 +13,20 @@ def generate_launch_description():
         PythonLaunchDescriptionSource(orbbec_launch_path),
         launch_arguments={
             'camera_name': 'drone',
-            'enable_sync_output_accel_gyro': 'true',
-            'enable_accel': 'true',
-            'enable_gyro': 'true',
+            'enable_sync': 'true',
             'depth_registration': 'true',
-            'color_width': '640',
-            'color_height': '480',
-            'depth_width': '640',
-            'depth_height': '480'
+            'enable_color': 'true',
+            'enable_depth': 'true',
+            # --- New "Lower CPU" Settings ---
+            'color_width': '424',
+            'color_height': '240',
+            'color_fps': '10',
+            'depth_width': '424',
+            'depth_height': '240',
+            'depth_fps': '10',
+            'color_format': 'MJPEG',          # High compression to save USB bandwidth
+            'enable_point_cloud': 'false',    # Let RTAB-Map handle the 3D math instead
+            # --------------------------------
         }.items()
     )
 
