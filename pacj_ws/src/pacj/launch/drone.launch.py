@@ -1,5 +1,5 @@
 from launch import LaunchDescription
-from launch.actions import IncludeLaunchDescription
+from launch.actions import IncludeLaunchDescription, TimerAction
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch_ros.actions import Node
 import os
@@ -12,7 +12,7 @@ def generate_launch_description():
     drone_camera = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(orbbec_launch_path),
         launch_arguments={
-            'camera_name': 'rover',
+            'camera_name': 'drone',
             'enable_sync': 'true',
             'depth_registration': 'true',
             'enable_color': 'true',
@@ -20,10 +20,10 @@ def generate_launch_description():
             # --- New "Lower CPU" Settings ---
             'color_width': '424',
             'color_height': '240',
-            'color_fps': '15',
-            'depth_width': '424',
-            'depth_height': '266',
-            'depth_fps': '15',
+            'color_fps': '6',
+            'depth_width': '480',
+            'depth_height': '270',
+            'depth_fps': '6',
             'color_format': 'MJPEG',          # High compression to save USB bandwidth
             'enable_point_cloud': 'false',    # Let RTAB-Map handle the 3D math instead
             # --------------------------------
@@ -38,6 +38,10 @@ def generate_launch_description():
     )
 
     return LaunchDescription([
-        drone_camera,
-#        drone_driver,
+        # rover_driver,
+        # (5s Delay)
+        TimerAction(
+            period=5.0,
+            actions=[drone_camera]
+        ),
     ])
