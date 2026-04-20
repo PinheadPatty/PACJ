@@ -38,7 +38,7 @@ def generate_launch_description():
     )
 
     return LaunchDescription([
-        # rover_driver,
+        # drone_driver,
         # (5s Delay)
         TimerAction(
             period=5.0,
