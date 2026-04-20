@@ -1,5 +1,5 @@
 from launch import LaunchDescription
-from launch.actions import IncludeLaunchDescription
+from launch.actions import IncludeLaunchDescription, TimerAction
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch_ros.actions import Node
 import os
@@ -13,25 +13,58 @@ def generate_launch_description():
         PythonLaunchDescriptionSource(orbbec_launch_path),
         launch_arguments={
             'camera_name': 'drone',
-            'enable_sync_output_accel_gyro': 'true',
-            'enable_accel': 'true',
-            'enable_gyro': 'true',
+            'enable_sync': 'true',
             'depth_registration': 'true',
-            'color_width': '640',
-            'color_height': '480',
-            'depth_width': '640',
-            'depth_height': '480'
+            'enable_color': 'true',
+            'enable_depth': 'true',
+            # --- New "Lower CPU" Settings ---
+            'color_width': '424',
+            'color_height': '240',
+            'color_fps': '6',
+            'depth_width': '480',
+            'depth_height': '270',
+            'depth_fps': '6',
+            'color_format': 'MJPEG',          # High compression to save USB bandwidth
+            'enable_point_cloud': 'false',    # Let RTAB-Map handle the 3D math instead
+            # --------------------------------
         }.items()
     )
 
-    drone_driver = Node(
+    pi_camera = Node(
+        package='v4l2_camera',
+        executable='v4l2_camera_node',
+        name='pi_camera',
+        parameters=[{
+            'image_size': [1920, 1080],
+        }]
+    )
+
+    # Gated: publish_setpoints + Offboard; then publish_velocity / publish_position /
+    # publish_landing for each control mode (all default false in the node).
+    offboard_controller = Node(
         package='pacj',
-        executable='drone_driver',
-        name='drone_driver',
-        output='screen'
+        executable='offboard_controller',
+        name='offboard_controller',
+        output='screen',
+        parameters=[{
+            'marker_size': 0.046,
+            # 'publish_setpoints': True,
+            # 'publish_velocity': True,
+            # 'publish_position': True,
+            # 'publish_landing': True,
+        }],
+        remappings=[
+            ('/camera_info', '/camera/camera_info'),
+            ('/image_raw', '/camera/image_raw')
+        ]
     )
 
     return LaunchDescription([
-        drone_camera,
-        drone_driver,
+        # offboard_controller,
+        # pi_camera,
+        # (5s Delay)
+        TimerAction(
+            period=5.0,
+            actions=[drone_camera]
+        ),
     ])

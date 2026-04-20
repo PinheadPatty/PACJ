@@ -29,23 +29,15 @@ def generate_launch_description():
             # --- New "Lower CPU" Settings ---
             'color_width': '424',
             'color_height': '240',
-            'color_fps': '15',
-            'depth_width': '424',
-            'depth_height': '266',
-            'depth_fps': '15',
+            'color_fps': '6',
+            'depth_width': '480',
+            'depth_height': '270',
+            'depth_fps': '6',
             'color_format': 'MJPEG',          # High compression to save USB bandwidth
             'enable_point_cloud': 'false',    # Let RTAB-Map handle the 3D math instead
             # --------------------------------
         }.items()
     )
-
-    # # Battery monitor node
-    # battery_node = Node(
-    #     package='pacj',
-    #     executable='battery',
-    #     name='battery_monitor',
-    #     output='screen'
-    # )
 
     return LaunchDescription([
         rover_driver_node,
@@ -54,5 +46,4 @@ def generate_launch_description():
             period=5.0,
             actions=[rover_camera_node]
         ),
-        # battery_node,
     ])

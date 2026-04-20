@@ -31,12 +31,10 @@ setup(
         'console_scripts': [
             'decompressor = pacj.decompress:main',
             'rover_driver = pacj.rover_driver:main',
-            'drone_driver = pacj.drone_driver:main',
             'battery = pacj.battery:main',
-            'vio_relay = pacj.vio_relay:main',
-            'tf_broadcaster = pacj.tf_broadcaster:main',
             'interactive_setpoint = pacj.interactive_setpoint:main',
             'drone_planner = pacj.drone_planner:main',
+            'offboard_controller = pacj.offboard_controller:main',
         ],
     },
 )
