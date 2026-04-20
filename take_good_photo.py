@@ -1,11 +1,7 @@
 """
 Capture RG10 via v4l2, repair common buffer layout issues, demosaic, save JPEG.
 
-Typical failure modes this targets:
-  - Row stride padding (handled like take_raw_photo.py)
-  - Vertical \"wrap\": frame starts mid-scan so the image is continuous but the top/bottom
-    halves are swapped; fix by swapping or rolling the raw frame along rows before debayer.
-  - Extra rows in the buffer (nominal height 720 but file holds 1440 lines): pick a slice.
+Edit the TUNING block below; command-line flags only override paths and verbosity.
 """
 
 import argparse
@@ -17,7 +13,52 @@ import subprocess
 import sys
 from typing import Optional, Tuple
 
-from take_raw_photo import _BAYER_CODES, _debayer_and_grade, _query_v4l2_video_format
+from take_raw_photo import _BAYER_CODES, _query_v4l2_video_format
+
+# =============================================================================
+# TUNING — edit these (avoid duplicating logic on the command line).
+# =============================================================================
+
+# --- Sensor (v4l2-ctl on subdev) ---
+SENSOR_EXPOSURE = 1200
+SENSOR_ANALOGUE_GAIN = 150
+SENSOR_DIGITAL_GAIN = 2000
+
+# --- Bayer demosaic (OpenCV): "rg" | "gr" | "bg" | "gb" ---
+BAYER_PATTERN = "gb"
+
+# First row of the DMA buffer to treat as line 0 of the frame (use when the driver
+# stacks more lines than the nominal height, e.g. 720 for a second full frame).
+RAW_ROW_WINDOW_START = 0
+
+# --- Vertical buffer / “wrap” (all in whole rows) ---
+# Half-frame reversal (DMA often delivers bottom half first): swap top/bottom halves
+# of the Bayer plane before any roll.
+SWAP_RAW_TOP_BOTTOM_HALVES = True
+
+# Fine alignment: shifts content along the vertical axis after the optional swap.
+# Positive = np.roll(..., +k, axis=0) moves row i to row i-k (content appears to
+# shift down). Tune in ±1 steps, or jump by ~height//2 (e.g. 360 @ 720p) to explore.
+RAW_VERTICAL_ROLL_ROWS = 0
+
+# Same two controls on the final BGR image (after demosaic). Usually leave off if
+# the raw-stage correction is enough.
+SWAP_BGR_TOP_BOTTOM_HALVES = False
+BGR_VERTICAL_ROLL_ROWS = 0
+
+# --- Color / toning (after demosaic) ---
+TARGET_LUMA_MEAN = 120.0  # higher → brighter overall
+SATURATION_MULTIPLIER = 1.2  # 1.0 = no change; <1 mutes, >1 boosts color
+
+# Simple gray-world style balance; set False to only scale brightness uniformly.
+ENABLE_SIMPLE_AWB = True
+
+# Extra per-channel multipliers after AWB (tint): 1.0 = neutral
+MANUAL_B_GAIN = 1.0
+MANUAL_G_GAIN = 1.0
+MANUAL_R_GAIN = 1.0
+
+# =============================================================================
 
 _SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 _GOOD_OUTPUT_DIR = os.path.join(_SCRIPT_DIR, "good_photo_captures")
@@ -43,12 +84,6 @@ def _load_raw10_planar_slice(
     bytes_per_line: Optional[int],
     row_offset: int,
 ) -> Tuple[np.ndarray, dict]:
-    """
-    Load RG10 as uint16 rows; crop to width; take `height` rows starting at `row_offset`.
-
-    Uses driver bytes-per-line when it divides the file size (avoids mistaking a 2×-tall
-    buffer for a single frame with a doubled stride).
-    """
     file_bytes = os.path.getsize(path)
     if height <= 0:
         raise ValueError("invalid height")
@@ -98,58 +133,58 @@ def _load_raw10_planar_slice(
     return raw, dbg
 
 
-def _unwrap_raw(raw: np.ndarray, mode: str) -> np.ndarray:
-    """Fix vertical half-buffer wrap in the Bayer plane before demosaic."""
-    h = raw.shape[0]
-    if h < 2 or mode == "none" or mode == "swap-bgr":
-        return raw
-    if mode == "swap-raw":
+def _apply_vertical_geometry_2d(plane: np.ndarray, swap_halves: bool, roll_rows: int) -> np.ndarray:
+    """swap_halves then integer roll along axis=0 (same convention for raw Bayer or BGR)."""
+    out = plane
+    h = out.shape[0]
+    if swap_halves and h >= 2:
         mid = h // 2
-        return np.vstack((raw[mid:], raw[:mid]))
-    if mode == "roll-raw-up":
-        mid = h // 2
-        return np.roll(raw, -mid, axis=0) if mid else raw
-    if mode == "roll-raw-down":
-        mid = h // 2
-        return np.roll(raw, mid, axis=0) if mid else raw
-    raise ValueError(f"unknown unwrap mode {mode!r}")
+        out = np.vstack((out[mid:], out[:mid]))
+    if roll_rows:
+        out = np.roll(out, roll_rows, axis=0)
+    return out
 
 
-def _unwrap_bgr(img: np.ndarray, mode: str) -> np.ndarray:
-    if mode != "swap-bgr":
-        return img
-    h = img.shape[0]
-    if h < 2:
-        return img
-    mid = h // 2
-    return np.vstack((img[mid:], img[:mid]))
+def _debayer_and_grade_tuned(img8: np.ndarray, bayer_code: int) -> np.ndarray:
+    color = cv2.cvtColor(img8, bayer_code)
+
+    if ENABLE_SIMPLE_AWB:
+        mean_b = float(np.mean(color[:, :, 0]))
+        mean_g = float(np.mean(color[:, :, 1]))
+        mean_r = float(np.mean(color[:, :, 2]))
+        current_mean = (mean_b + mean_g + mean_r) / 3.0
+        scale = TARGET_LUMA_MEAN / max(current_mean, 1.0)
+        b = np.clip(
+            color[:, :, 0] * scale * (mean_g / max(mean_b, 1.0)) * MANUAL_B_GAIN,
+            0,
+            255,
+        ).astype(np.uint8)
+        g = np.clip(color[:, :, 1] * scale * MANUAL_G_GAIN, 0, 255).astype(np.uint8)
+        r = np.clip(
+            color[:, :, 2] * scale * (mean_g / max(mean_r, 1.0)) * MANUAL_R_GAIN,
+            0,
+            255,
+        ).astype(np.uint8)
+    else:
+        mean = float(np.mean(color))
+        scale = TARGET_LUMA_MEAN / max(mean, 1.0)
+        b = np.clip(color[:, :, 0] * scale * MANUAL_B_GAIN, 0, 255).astype(np.uint8)
+        g = np.clip(color[:, :, 1] * scale * MANUAL_G_GAIN, 0, 255).astype(np.uint8)
+        r = np.clip(color[:, :, 2] * scale * MANUAL_R_GAIN, 0, 255).astype(np.uint8)
+
+    final_img = cv2.merge([b, g, r])
+
+    hsv = cv2.cvtColor(final_img, cv2.COLOR_BGR2HSV)
+    hsv[:, :, 1] = np.clip(hsv[:, :, 1] * SATURATION_MULTIPLIER, 0, 255)
+    return cv2.cvtColor(hsv, cv2.COLOR_HSV2BGR)
 
 
 def main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(
-        description="Capture RG10, fix buffer wrap / row slice, demosaic, save good_photo_*.jpg"
+        description="Capture RG10, apply TUNING constants in this file, save good_photo_*.jpg"
     )
     parser.add_argument("--video", default="/dev/video0")
     parser.add_argument("--subdev", default="/dev/v4l-subdev0")
-    parser.add_argument(
-        "--bayer",
-        choices=list(_BAYER_CODES.keys()),
-        default="gb",
-        help="Bayer layout (you found gb closest).",
-    )
-    parser.add_argument(
-        "--unwrap",
-        choices=("none", "swap-raw", "roll-raw-up", "roll-raw-down", "swap-bgr"),
-        default="swap-raw",
-        help="Repair vertical wrap: swap-raw/roll-* on Bayer plane; swap-bgr after demosaic.",
-    )
-    parser.add_argument(
-        "--raw-row-offset",
-        type=int,
-        default=0,
-        help="If the driver delivers multiple stacked frames, start reading raw at this row "
-        "(e.g. 720 when the file has 1440 lines of 1280-wide RG10).",
-    )
     parser.add_argument(
         "--raw-out",
         default="test_raw_auto.bin",
@@ -169,7 +204,7 @@ def main(argv: list[str]) -> int:
             "-d",
             args.subdev,
             "-c",
-            "exposure=1200,analogue_gain=150,digital_gain=2000",
+            f"exposure={SENSOR_EXPOSURE},analogue_gain={SENSOR_ANALOGUE_GAIN},digital_gain={SENSOR_DIGITAL_GAIN}",
         ],
         check=False,
     )
@@ -190,12 +225,16 @@ def main(argv: list[str]) -> int:
         print("Capture failed (raw file missing)", file=sys.stderr)
         return 1
 
+    if BAYER_PATTERN not in _BAYER_CODES:
+        print(f"Invalid BAYER_PATTERN {BAYER_PATTERN!r}", file=sys.stderr)
+        return 1
+
     qw, qh, qbpl = _query_v4l2_video_format(args.video)
     width, height = qw or 1280, qh or 720
 
     try:
         raw, dbg = _load_raw10_planar_slice(
-            args.raw_out, width, height, qbpl, args.raw_row_offset
+            args.raw_out, width, height, qbpl, RAW_ROW_WINDOW_START
         )
     except ValueError as e:
         print(f"Raw layout error: {e}", file=sys.stderr)
@@ -206,14 +245,18 @@ def main(argv: list[str]) -> int:
     elif dbg["total_lines"] != height:
         print(
             f"Note: buffer has {dbg['total_lines']} lines (nominal height {height}). "
-            f"If the image looks wrong, try --raw-row-offset {height} or run with -v.",
+            f"Try increasing RAW_ROW_WINDOW_START to {height} in the TUNING block.",
             file=sys.stderr,
         )
 
-    raw = _unwrap_raw(raw, args.unwrap)
+    raw = _apply_vertical_geometry_2d(
+        raw, SWAP_RAW_TOP_BOTTOM_HALVES, RAW_VERTICAL_ROLL_ROWS
+    )
     img8 = ((raw & 0x3FF) >> 2).astype(np.uint8)
-    out = _debayer_and_grade(img8, _BAYER_CODES[args.bayer])
-    out = _unwrap_bgr(out, args.unwrap)
+    out = _debayer_and_grade_tuned(img8, _BAYER_CODES[BAYER_PATTERN])
+    out = _apply_vertical_geometry_2d(
+        out, SWAP_BGR_TOP_BOTTOM_HALVES, BGR_VERTICAL_ROLL_ROWS
+    )
 
     out_path = _next_good_photo_path()
     cv2.imwrite(out_path, out)
