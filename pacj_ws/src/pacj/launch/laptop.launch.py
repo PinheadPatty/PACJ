@@ -80,10 +80,10 @@ def generate_launch_description():
     )
 
     return LaunchDescription([
-        vio_relay,
-        tf_broadcaster,
-        interactive_setpoint,
-        drone_planner,
+#        vio_relay,
+#        tf_broadcaster,
+#        interactive_setpoint,
+#        drone_planner,
         slam,
         rviz_node
     ])
