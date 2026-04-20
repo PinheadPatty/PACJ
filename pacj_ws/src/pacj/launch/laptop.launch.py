@@ -101,12 +101,8 @@ def generate_launch_description():
     return LaunchDescription([
         # interactive_setpoint,
         # drone_planner,
+        drone_slam,
         rover_slam,
-        rviz_rover
-        TimerAction(
-            period=10.0,
-            actions=[drone_slam]
-        ),
         rviz_drone,
-        
+        rviz_rover
     ])
