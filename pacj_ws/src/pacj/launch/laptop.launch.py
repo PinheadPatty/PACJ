@@ -10,20 +10,6 @@ def generate_launch_description():
     rtabmap_launch_path = os.path.join(rtabmap_pkg, 'launch', 'rtabmap.launch.py')
 
     # --- YOUR ORIGINAL NODES (restored) ---
-    vio_relay = Node(
-        package='pacj',
-        executable='vio_relay',
-        name='vio_relay',
-        output='screen'
-    )
-
-    tf_broadcaster = Node(
-        package='pacj',
-        executable='tf_broadcaster',
-        name='tf_broadcaster',
-        output='screen'
-    )
-
     interactive_setpoint = Node(
         package='pacj',
         executable='interactive_setpoint',
@@ -113,11 +99,9 @@ def generate_launch_description():
     )
 
     return LaunchDescription([
-        # vio_relay,
-        # tf_broadcaster,
         # interactive_setpoint,
         # drone_planner,
-        # drone_slam,
+        drone_slam,
         rover_slam,
         rviz_drone,
         rviz_rover

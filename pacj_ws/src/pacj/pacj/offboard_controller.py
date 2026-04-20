@@ -14,7 +14,28 @@ import cv2
 from cv_bridge import CvBridge
 import numpy as np
 
+
 class OffboardController(Node):
+    """PX4 offboard bridge.
+
+    Three top-level modes (self.control_mode):
+      VELOCITY  — /cmd_vel → NED velocity setpoints (needs publish_velocity:=true).
+      POSITION  — /cmd_pose → NED position setpoints (needs publish_position:=true).
+      LANDING   — ArUco landing via /start_landing (needs publish_landing:=true).
+
+    All modes also require publish_setpoints:=true and NAVIGATION_STATE_OFFBOARD.
+
+    Landing sub-states (self.land_state): WAIT_MARKER → ARUCO_DESCENT → READY_TO_COUPLE.
+    """
+
+    MODE_VELOCITY = 'VELOCITY'
+    MODE_POSITION = 'POSITION'
+    MODE_LANDING = 'LANDING'
+
+    LAND_WAIT_MARKER = 'WAIT_MARKER'
+    LAND_ARUCO_DESCENT = 'ARUCO_DESCENT'
+    LAND_READY_TO_COUPLE = 'READY_TO_COUPLE'
+
     def __init__(self):
         super().__init__('offboard_controller')
 
@@ -41,14 +62,13 @@ class OffboardController(Node):
         self.vehicle_local_pos_sub = self.create_subscription(
             VehicleLocalPosition, '/fmu/out/vehicle_local_position', self.vehicle_local_pos_cb, qos_profile)
 
-        # Subscribers for Teleop and Landing
+        # Teleop + landing trigger (no /rover_pose: pilot positions with teleop first)
         self.cmd_vel_sub = self.create_subscription(Twist, '/cmd_vel', self.cmd_vel_cb, 10)
         self.cmd_pose_sub = self.create_subscription(PoseStamped, '/cmd_pose', self.cmd_pose_cb, 10)
         self.start_landing_sub = self.create_subscription(Bool, '/start_landing', self.start_landing_cb, 10)
-        self.rover_pose_sub = self.create_subscription(PoseStamped, '/rover_pose', self.rover_pose_cb, 10)
         self.landing_success_pub = self.create_publisher(Bool, '/landing_success', 10)
 
-        # Subscribers for Camera
+        # Camera (ArUco) — only processed while MODE_LANDING
         self.info_sub = self.create_subscription(CameraInfo, '/camera_info', self.camera_info_cb, 10)
         self.image_sub = self.create_subscription(Image, '/image_raw', self.image_cb, 10)
 
@@ -59,37 +79,60 @@ class OffboardController(Node):
         self.aruco_dict = cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_4X4_50)
         self.aruco_params = cv2.aruco.DetectorParameters()
 
+        # Master: publish_setpoints + Offboard before anything reaches PX4.
+        self.publish_setpoints = bool(self.declare_parameter('publish_setpoints', False).value)
+        # Per-mode (default false): must enable the mode you use on top of publish_setpoints.
+        self.publish_velocity = bool(self.declare_parameter('publish_velocity', False).value)
+        self.publish_position = bool(self.declare_parameter('publish_position', False).value)
+        self.publish_landing = bool(self.declare_parameter('publish_landing', False).value)
+
         # State Variables
         self.nav_state = VehicleStatus.NAVIGATION_STATE_MAX
         self.arming_state = VehicleStatus.ARMING_STATE_DISARMED
         self.current_yaw = 0.0
         self.drone_pos = [0.0, 0.0, 0.0]
-        
-        self.rover_pos_ned = [0.0, 0.0, 0.0]
-        self.rover_yaw_ned = 0.0
-        self.rover_pose_received = False
 
         self.aruco_rel_pos = [0.0, 0.0, 0.0]
         self.aruco_rel_yaw = 0.0
         self.aruco_last_seen = self.get_clock().now()
         self.aruco_visible = False
 
-        # Modes: 'VELOCITY', 'POSITION', 'LANDING'
-        self.control_mode = 'VELOCITY'
+        self.control_mode = self.MODE_VELOCITY
         self.current_twist = Twist()
         self.current_pose = PoseStamped()
-        
+
         self.current_pose.pose.position.x = 0.0
         self.current_pose.pose.position.y = 0.0
         self.current_pose.pose.position.z = 2.0
-        
-        # Landing State Machine: SLAM_APPROACH, ARUCO_HOVER, ARUCO_DESCENT, READY_TO_COUPLE
-        self.land_state = 'SLAM_APPROACH'
+
+        # Snapshot when landing starts (NED position + yaw to hold while seeking marker)
+        self.land_hold_pos = [0.0, 0.0, 0.0]
+        self.land_hold_yaw = 0.0
+        self.land_state = self.LAND_WAIT_MARKER
 
         self.timer_period = 0.05  # 20 Hz
         self.timer = self.create_timer(self.timer_period, self.timer_cb)
 
         self.get_logger().info("Offboard Controller Initialized.")
+        self.get_logger().warn(
+            "Gates: publish_setpoints + Offboard; and publish_velocity / publish_position / "
+            "publish_landing for each mode."
+        )
+
+    def _may_command_px4(self):
+        return (
+            self.publish_setpoints
+            and self.nav_state == VehicleStatus.NAVIGATION_STATE_OFFBOARD
+        )
+
+    def _may_velocity(self):
+        return self._may_command_px4() and self.publish_velocity
+
+    def _may_position(self):
+        return self._may_command_px4() and self.publish_position
+
+    def _may_landing(self):
+        return self._may_command_px4() and self.publish_landing
 
     def vehicle_attitude_cb(self, msg):
         q = msg.q
@@ -103,44 +146,43 @@ class OffboardController(Node):
         self.arming_state = msg.arming_state
 
     def cmd_vel_cb(self, msg):
-        if self.control_mode != 'LANDING':
-            self.control_mode = 'VELOCITY'
-            self.current_twist = msg
+        if self.control_mode == self.MODE_LANDING:
+            return
+        if not self._may_velocity():
+            return
+        self.control_mode = self.MODE_VELOCITY
+        self.current_twist = msg
 
     def cmd_pose_cb(self, msg):
-        if self.control_mode != 'LANDING':
-            self.control_mode = 'POSITION'
-            self.current_pose = msg
+        if self.control_mode == self.MODE_LANDING:
+            return
+        if not self._may_position():
+            return
+        self.control_mode = self.MODE_POSITION
+        self.current_pose = msg
 
     def start_landing_cb(self, msg):
-        if msg.data and self.control_mode != 'LANDING':
-            self.control_mode = 'LANDING'
-            self.land_state = 'SLAM_APPROACH'
-            self.get_logger().info("LANDING MODE ACTIVATED: Phase 1 (SLAM Approach)")
-        elif not msg.data and self.control_mode == 'LANDING':
-            self.control_mode = 'VELOCITY'
-            self.get_logger().info("LANDING MODE DEACTIVATED")
-
-    def rover_pose_cb(self, msg):
-        # Convert ENU to NED
-        ros_x = float(msg.pose.position.x)
-        ros_y = float(msg.pose.position.y)
-        ros_z = float(msg.pose.position.z)
-        
-        self.rover_pos_ned[0] = ros_y
-        self.rover_pos_ned[1] = ros_x
-        self.rover_pos_ned[2] = -ros_z
-
-        q_x = msg.pose.orientation.x
-        q_y = msg.pose.orientation.y
-        q_z = msg.pose.orientation.z
-        q_w = msg.pose.orientation.w
-        
-        siny_cosp = 2.0 * (q_w * q_z + q_x * q_y)
-        cosy_cosp = 1.0 - 2.0 * (q_y * q_y + q_z * q_z)
-        target_yaw_enu = math.atan2(siny_cosp, cosy_cosp)
-        self.rover_yaw_ned = -target_yaw_enu
-        self.rover_pose_received = True
+        if msg.data and self.control_mode != self.MODE_LANDING:
+            if not self._may_landing():
+                self.get_logger().warn(
+                    "Landing ignored: need publish_setpoints, Offboard, publish_landing:=true."
+                )
+                return
+            self.land_hold_pos = [
+                float(self.drone_pos[0]),
+                float(self.drone_pos[1]),
+                float(self.drone_pos[2]),
+            ]
+            self.land_hold_yaw = float(self.current_yaw)
+            self.control_mode = self.MODE_LANDING
+            self.land_state = self.LAND_WAIT_MARKER
+            self.get_logger().info(
+                "Landing mode: holding current NED pose and seeking ArUco "
+                "(teleop yourself over the deck before starting)."
+            )
+        elif not msg.data and self.control_mode == self.MODE_LANDING:
+            self.control_mode = self.MODE_VELOCITY
+            self.get_logger().info("Landing mode deactivated.")
 
     def camera_info_cb(self, msg):
         if self.camera_matrix is None:
@@ -148,16 +190,20 @@ class OffboardController(Node):
             self.dist_coeffs = np.array(msg.d)
 
     def image_cb(self, msg):
-        if self.control_mode != 'LANDING' or self.camera_matrix is None:
+        if (
+            self.control_mode != self.MODE_LANDING
+            or not self.publish_landing
+            or self.camera_matrix is None
+        ):
             return
 
         try:
             cv_image = self.bridge.imgmsg_to_cv2(msg, "bgr8")
-        except Exception as e:
+        except Exception:
             return
 
         gray = cv2.cvtColor(cv_image, cv2.COLOR_BGR2GRAY)
-        corners, ids, rejected = cv2.aruco.detectMarkers(gray, self.aruco_dict, parameters=self.aruco_params)
+        corners, ids, _ = cv2.aruco.detectMarkers(gray, self.aruco_dict, parameters=self.aruco_params)
 
         if ids is not None and len(ids) > 0:
             marker_points = np.array([
@@ -169,185 +215,181 @@ class OffboardController(Node):
 
             _, rvec, tvec = cv2.solvePnP(marker_points, corners[0][0], self.camera_matrix, self.dist_coeffs)
             tvec = tvec.flatten()
-            
+
             # Camera -> NED body
             # Camera X = East, Y = -North, Z = Down
             self.aruco_rel_pos[0] = -tvec[1]
             self.aruco_rel_pos[1] = tvec[0]
             self.aruco_rel_pos[2] = tvec[2]
 
-            # Extract Yaw from rvec
             rmat, _ = cv2.Rodrigues(rvec)
-            # R_ned_c transforms Camera frame to NED frame
             R_ned_c = np.array([
                 [0, -1,  0],
                 [1,  0,  0],
                 [0,  0,  1]
             ])
             R_ned_m = R_ned_c @ rmat
-            # Yaw is atan2(R_yx, R_xx)
             self.aruco_rel_yaw = math.atan2(R_ned_m[1, 0], R_ned_m[0, 0])
 
             self.aruco_last_seen = self.get_clock().now()
             self.aruco_visible = True
         else:
-            if (self.get_clock().now() - self.aruco_last_seen).nanoseconds > 1e9: # 1 second timeout
+            if (self.get_clock().now() - self.aruco_last_seen).nanoseconds > 1e9:  # 1s timeout
                 self.aruco_visible = False
 
     def timer_cb(self):
+        if not self._may_command_px4():
+            return
+
+        if self.control_mode == self.MODE_VELOCITY and not self.publish_velocity:
+            return
+        if self.control_mode == self.MODE_POSITION and not self.publish_position:
+            return
+        if self.control_mode == self.MODE_LANDING and not self.publish_landing:
+            return
+
         self.publish_offboard_control_mode()
 
         msg = TrajectorySetpoint()
-        
-        if self.control_mode == 'VELOCITY':
-            # Velocity Control Mode
-            xy_multiplier = 5.0
-            z_multiplier = 1.0
-            
-            body_forward = float(self.current_twist.linear.x) * xy_multiplier
-            body_right = -float(self.current_twist.linear.y) * xy_multiplier
-            body_down = -float(self.current_twist.linear.z) * z_multiplier
-            
-            cos_yaw = math.cos(self.current_yaw)
-            sin_yaw = math.sin(self.current_yaw)
-            
-            msg.velocity[0] = body_forward * cos_yaw - body_right * sin_yaw
-            msg.velocity[1] = body_forward * sin_yaw + body_right * cos_yaw
-            msg.velocity[2] = body_down
-            msg.yawspeed = -float(self.current_twist.angular.z)
 
-            msg.position = [float('nan'), float('nan'), float('nan')]
-            msg.acceleration = [float('nan'), float('nan'), float('nan')]
-            msg.jerk = [float('nan'), float('nan'), float('nan')]
-            msg.yaw = float('nan')
-
-        elif self.control_mode == 'POSITION':
-            # Position Control Mode
-            ros_x = float(self.current_pose.pose.position.x)
-            ros_y = float(self.current_pose.pose.position.y)
-            ros_z = float(self.current_pose.pose.position.z)
-            
-            msg.position[0] = ros_y
-            msg.position[1] = ros_x
-            msg.position[2] = -ros_z
-            
-            q_x = self.current_pose.pose.orientation.x
-            q_y = self.current_pose.pose.orientation.y
-            q_z = self.current_pose.pose.orientation.z
-            q_w = self.current_pose.pose.orientation.w
-            
-            siny_cosp = 2.0 * (q_w * q_z + q_x * q_y)
-            cosy_cosp = 1.0 - 2.0 * (q_y * q_y + q_z * q_z)
-            target_yaw = math.atan2(siny_cosp, cosy_cosp)
-            msg.yaw = -target_yaw
-            
-            msg.velocity = [float('nan'), float('nan'), float('nan')]
-            msg.acceleration = [float('nan'), float('nan'), float('nan')]
-            msg.jerk = [float('nan'), float('nan'), float('nan')]
-            msg.yawspeed = float('nan')
-
-        elif self.control_mode == 'LANDING':
-            # Full Offboard Landing State Machine
-            msg.velocity = [float('nan'), float('nan'), float('nan')]
-            msg.acceleration = [float('nan'), float('nan'), float('nan')]
-            msg.jerk = [float('nan'), float('nan'), float('nan')]
-            msg.yawspeed = float('nan')
-
-            if self.land_state == 'SLAM_APPROACH':
-                # Fly to 1.5m above rover using SLAM
-                if not self.rover_pose_received:
-                    # Fallback if no rover pose: hover in place
-                    msg.position = [self.drone_pos[0], self.drone_pos[1], self.drone_pos[2]]
-                    msg.yaw = self.current_yaw
-                else:
-                    hover_z = self.rover_pos_ned[2] - 1.5 # 1.5m above rover (NED Down is negative up)
-                    msg.position = [self.rover_pos_ned[0], self.rover_pos_ned[1], hover_z]
-                    msg.yaw = self.rover_yaw_ned
-
-                    # Check if we are close enough to transition
-                    dist_xy = math.sqrt((self.drone_pos[0] - self.rover_pos_ned[0])**2 + (self.drone_pos[1] - self.rover_pos_ned[1])**2)
-                    dist_z = abs(self.drone_pos[2] - hover_z)
-                    
-                    if dist_xy < 0.2 and dist_z < 0.2:
-                        self.land_state = 'ARUCO_HOVER'
-                        self.get_logger().info("Phase 2: ARUCO_HOVER. Looking for marker...")
-
-            elif self.land_state == 'ARUCO_HOVER':
-                # Hold SLAM hover and wait for ArUco
-                hover_z = self.rover_pos_ned[2] - 1.5
-                msg.position = [self.rover_pos_ned[0], self.rover_pos_ned[1], hover_z]
-                msg.yaw = self.rover_yaw_ned
-
-                if self.aruco_visible:
-                    self.land_state = 'ARUCO_DESCENT'
-                    self.get_logger().info("Phase 3: ARUCO_DESCENT. Marker found, descending...")
-
-            elif self.land_state == 'ARUCO_DESCENT':
-                if not self.aruco_visible:
-                    # If we lose it when we are very close (< 15cm), it's probably because it's too big for FOV.
-                    # Transition to READY_TO_COUPLE blindly.
-                    if 0 < self.aruco_rel_pos[2] < 0.15:
-                        self.land_state = 'READY_TO_COUPLE'
-                        self.get_logger().info("Phase 4: READY_TO_COUPLE (Blind). Marker lost, but <15cm away. Pushing down.")
-                    else:
-                        # If lost from high up, abort back to hover!
-                        self.land_state = 'SLAM_APPROACH'
-                        self.get_logger().warn("Marker lost! Aborting back to SLAM Hover.")
-                        msg.position = [self.drone_pos[0], self.drone_pos[1], self.drone_pos[2]]
-                        msg.yaw = self.current_yaw
-                else:
-                    # Descend using relative ArUco coordinates
-                    # Target X/Y is current drone position + relative offset
-                    target_x = self.drone_pos[0] + self.aruco_rel_pos[0]
-                    target_y = self.drone_pos[1] + self.aruco_rel_pos[1]
-                    
-                    # Target Z is slightly below current to force descent (e.g. 0.2m/s descent)
-                    target_z = self.drone_pos[2] + 0.01  # Small step down each 50ms (0.2 m/s)
-                    
-                    # Target Yaw
-                    target_yaw = self.current_yaw + self.aruco_rel_yaw
-
-                    msg.position = [target_x, target_y, target_z]
-                    msg.yaw = target_yaw
-
-                    # Check if close enough to trigger coupling (e.g. distance to marker < 5cm)
-                    if self.aruco_rel_pos[2] < 0.05:
-                        self.land_state = 'READY_TO_COUPLE'
-                        self.get_logger().info("Phase 4: READY_TO_COUPLE. < 5cm from marker, pushing down gently.")
-
-            elif self.land_state == 'READY_TO_COUPLE':
-                if not self.aruco_visible:
-                    # Blindly push down and hold current X/Y/Yaw
-                    msg.position = [self.drone_pos[0], self.drone_pos[1], self.drone_pos[2] + 0.01]
-                    msg.yaw = self.current_yaw
-                else:
-                    # Keep maintaining X/Y/Yaw over the marker, and push down gently
-                    target_x = self.drone_pos[0] + self.aruco_rel_pos[0]
-                    target_y = self.drone_pos[1] + self.aruco_rel_pos[1]
-                    target_z = self.drone_pos[2] + 0.01 # keep descending slowly
-                    target_yaw = self.current_yaw + self.aruco_rel_yaw
-
-                    msg.position = [target_x, target_y, target_z]
-                    msg.yaw = target_yaw
-                
-                # Publish readiness signal for coupling
-                success_msg = Bool()
-                success_msg.data = True
-                self.landing_success_pub.publish(success_msg)
+        if self.control_mode == self.MODE_VELOCITY:
+            self._fill_velocity_setpoint(msg)
+        elif self.control_mode == self.MODE_POSITION:
+            self._fill_position_setpoint(msg)
+        elif self.control_mode == self.MODE_LANDING:
+            self._fill_landing_setpoint(msg)
 
         msg.timestamp = int(self.get_clock().now().nanoseconds / 1000)
         self.trajectory_setpoint_pub.publish(msg)
 
+    def _fill_velocity_setpoint(self, msg):
+        xy_multiplier = 5.0
+        z_multiplier = 1.0
+
+        body_forward = float(self.current_twist.linear.x) * xy_multiplier
+        body_right = -float(self.current_twist.linear.y) * xy_multiplier
+        body_down = -float(self.current_twist.linear.z) * z_multiplier
+
+        cos_yaw = math.cos(self.current_yaw)
+        sin_yaw = math.sin(self.current_yaw)
+
+        msg.velocity[0] = body_forward * cos_yaw - body_right * sin_yaw
+        msg.velocity[1] = body_forward * sin_yaw + body_right * cos_yaw
+        msg.velocity[2] = body_down
+        msg.yawspeed = -float(self.current_twist.angular.z)
+
+        msg.position = [float('nan'), float('nan'), float('nan')]
+        msg.acceleration = [float('nan'), float('nan'), float('nan')]
+        msg.jerk = [float('nan'), float('nan'), float('nan')]
+        msg.yaw = float('nan')
+
+    def _fill_position_setpoint(self, msg):
+        ros_x = float(self.current_pose.pose.position.x)
+        ros_y = float(self.current_pose.pose.position.y)
+        ros_z = float(self.current_pose.pose.position.z)
+
+        msg.position[0] = ros_y
+        msg.position[1] = ros_x
+        msg.position[2] = -ros_z
+
+        q_x = self.current_pose.pose.orientation.x
+        q_y = self.current_pose.pose.orientation.y
+        q_z = self.current_pose.pose.orientation.z
+        q_w = self.current_pose.pose.orientation.w
+
+        siny_cosp = 2.0 * (q_w * q_z + q_x * q_y)
+        cosy_cosp = 1.0 - 2.0 * (q_y * q_y + q_z * q_z)
+        target_yaw = math.atan2(siny_cosp, cosy_cosp)
+        msg.yaw = -target_yaw
+
+        msg.velocity = [float('nan'), float('nan'), float('nan')]
+        msg.acceleration = [float('nan'), float('nan'), float('nan')]
+        msg.jerk = [float('nan'), float('nan'), float('nan')]
+        msg.yawspeed = float('nan')
+
+    def _fill_landing_setpoint(self, msg):
+        msg.velocity = [float('nan'), float('nan'), float('nan')]
+        msg.acceleration = [float('nan'), float('nan'), float('nan')]
+        msg.jerk = [float('nan'), float('nan'), float('nan')]
+        msg.yawspeed = float('nan')
+
+        if self.land_state == self.LAND_WAIT_MARKER:
+            msg.position = [
+                self.land_hold_pos[0],
+                self.land_hold_pos[1],
+                self.land_hold_pos[2],
+            ]
+            msg.yaw = self.land_hold_yaw
+            if self.aruco_visible:
+                self.land_state = self.LAND_ARUCO_DESCENT
+                self.get_logger().info("ArUco acquired — descending.")
+
+        elif self.land_state == self.LAND_ARUCO_DESCENT:
+            if not self.aruco_visible:
+                if 0 < self.aruco_rel_pos[2] < 0.15:
+                    self.land_state = self.LAND_READY_TO_COUPLE
+                    self.get_logger().info("READY_TO_COUPLE (blind): marker lost but close; continuing down.")
+                    msg.position = [
+                        self.drone_pos[0],
+                        self.drone_pos[1],
+                        self.drone_pos[2] + 0.01,
+                    ]
+                    msg.yaw = self.current_yaw
+                else:
+                    self.land_state = self.LAND_WAIT_MARKER
+                    self.land_hold_pos = [
+                        float(self.drone_pos[0]),
+                        float(self.drone_pos[1]),
+                        float(self.drone_pos[2]),
+                    ]
+                    self.land_hold_yaw = float(self.current_yaw)
+                    self.get_logger().warn("Marker lost — hold here and re-acquire.")
+                    msg.position = [self.land_hold_pos[0], self.land_hold_pos[1], self.land_hold_pos[2]]
+                    msg.yaw = self.land_hold_yaw
+            else:
+                target_x = self.drone_pos[0] + self.aruco_rel_pos[0]
+                target_y = self.drone_pos[1] + self.aruco_rel_pos[1]
+                target_z = self.drone_pos[2] + 0.01
+                target_yaw = self.current_yaw + self.aruco_rel_yaw
+
+                msg.position = [target_x, target_y, target_z]
+                msg.yaw = target_yaw
+
+                if self.aruco_rel_pos[2] < 0.05:
+                    self.land_state = self.LAND_READY_TO_COUPLE
+                    self.get_logger().info("READY_TO_COUPLE: <5 cm from marker; final descent.")
+
+        elif self.land_state == self.LAND_READY_TO_COUPLE:
+            if not self.aruco_visible:
+                msg.position = [
+                    self.drone_pos[0],
+                    self.drone_pos[1],
+                    self.drone_pos[2] + 0.01,
+                ]
+                msg.yaw = self.current_yaw
+            else:
+                target_x = self.drone_pos[0] + self.aruco_rel_pos[0]
+                target_y = self.drone_pos[1] + self.aruco_rel_pos[1]
+                target_z = self.drone_pos[2] + 0.01
+                target_yaw = self.current_yaw + self.aruco_rel_yaw
+
+                msg.position = [target_x, target_y, target_z]
+                msg.yaw = target_yaw
+
+            success_msg = Bool()
+            success_msg.data = True
+            self.landing_success_pub.publish(success_msg)
+
     def publish_offboard_control_mode(self):
         msg = OffboardControlMode()
-        
-        if self.control_mode == 'POSITION' or self.control_mode == 'LANDING':
+
+        if self.control_mode == self.MODE_POSITION or self.control_mode == self.MODE_LANDING:
             msg.position = True
             msg.velocity = False
         else:
             msg.position = False
             msg.velocity = True
-            
+
         msg.acceleration = False
         msg.attitude = False
         msg.body_rate = False
@@ -367,6 +409,7 @@ class OffboardController(Node):
         msg.timestamp = int(self.get_clock().now().nanoseconds / 1000)
         self.vehicle_command_pub.publish(msg)
 
+
 def main(args=None):
     rclpy.init(args=args)
     node = OffboardController()
@@ -378,6 +421,7 @@ def main(args=None):
         node.destroy_node()
         if rclpy.ok():
             rclpy.shutdown()
+
 
 if __name__ == '__main__':
     main()

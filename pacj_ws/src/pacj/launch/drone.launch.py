@@ -39,13 +39,19 @@ def generate_launch_description():
         }]
     )
 
+    # Gated: publish_setpoints + Offboard; then publish_velocity / publish_position /
+    # publish_landing for each control mode (all default false in the node).
     offboard_controller = Node(
         package='pacj',
         executable='offboard_controller',
         name='offboard_controller',
         output='screen',
         parameters=[{
-            'marker_size': 0.046
+            'marker_size': 0.046,
+            # 'publish_setpoints': True,
+            # 'publish_velocity': True,
+            # 'publish_position': True,
+            # 'publish_landing': True,
         }],
         remappings=[
             ('/camera_info', '/camera/camera_info'),
