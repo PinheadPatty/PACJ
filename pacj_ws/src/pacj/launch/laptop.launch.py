@@ -23,20 +23,30 @@ def generate_launch_description():
         output='screen'
     )
 
-    # decompressor = Node(
-    #     package='pacj',
-    #     executable='decompressor',
-    #     name='decompressor',
-    #     output='screen'
-    # )
+    interactive_setpoint = Node(
+        package='pacj',
+        executable='interactive_setpoint',
+        name='interactive_setpoint',
+        output='screen'
+    )
 
-    slam = IncludeLaunchDescription(
+    drone_planner = Node(
+        package='pacj',
+        executable='drone_planner',
+        name='drone_planner',
+        output='screen'
+    )
+
+    drone_slam = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(rtabmap_launch_path),
         launch_arguments={
             'rgb_topic': '/drone/color/image_raw',
             'depth_topic': '/drone/depth/image_raw',
             'camera_info_topic': '/drone/color/camera_info',
-            'frame_id': 'drone_link',          # This MUST match the camera's base frame
+            'frame_id': 'drone_link',
+            'odom_frame_id': 'drone/odom',
+            'map_frame_id': 'drone/map',
+            'namespace': 'drone',
             'approx_sync': 'true',
             'approx_sync_max_interval': '0.1',
             'rgb_image_transport': 'compressed',
@@ -44,18 +54,35 @@ def generate_launch_description():
             'qos': '1',
             'qos_camera': '1',
             'use_sim_time': 'false',
-            'args': '--delete_db_on_start --Vis/MaxFeatures 600',
+            'args': '--delete_db_on_start --Vis/MaxFeatures 600 --database_path /tmp/drone_rtabmap.db',
             'rtabmap_viz': 'false',
-            'Grid/3D': 'true', # Enable OctoMap Native 3D Grid
-            'publish_tf_odom': 'false', # IMPORTANT: Let PX4 handle TF, not RTAB-Map
+            'Grid/3D': 'true',
+            'publish_tf_odom': 'false',
         }.items()
     )
 
-    interactive_setpoint = Node(
-        package='pacj',
-        executable='interactive_setpoint',
-        name='interactive_setpoint',
-        output='screen'
+    rover_slam = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource(rtabmap_launch_path),
+        launch_arguments={
+            'rgb_topic': '/rover/color/image_raw',
+            'depth_topic': '/rover/depth/image_raw',
+            'camera_info_topic': '/rover/color/camera_info',
+            'frame_id': 'rover_link',
+            'odom_frame_id': 'rover/odom',
+            'map_frame_id': 'rover/map',
+            'namespace': 'rover',
+            'approx_sync': 'true',
+            'approx_sync_max_interval': '0.1',
+            'rgb_image_transport': 'compressed',
+            'depth_image_transport': 'compressedDepth',
+            'qos': '1',
+            'qos_camera': '1',
+            'use_sim_time': 'false',
+            'args': '--delete_db_on_start --Vis/MaxFeatures 600 --database_path /tmp/rover_rtabmap.db',
+            'rtabmap_viz': 'false',
+            'Grid/3D': 'true',
+            'publish_tf_odom': 'false',
+        }.items()
     )
 
     rviz_config_dir = os.path.join(
@@ -71,19 +98,12 @@ def generate_launch_description():
         output='screen'
     )
 
-    drone_planner = Node(
-        package='pacj',
-        executable='drone_planner',
-        name='drone_planner',
-        output='screen'
-    )
-
     return LaunchDescription([
-        # decompressor,
-        vio_relay,
-        tf_broadcaster,
-        interactive_setpoint,
-        drone_planner,
-        slam,
+        # vio_relay,
+        # tf_broadcaster,
+        # interactive_setpoint,
+        # drone_planner,
+        drone_slam,
+        rover_slam,
         rviz_node
     ])
