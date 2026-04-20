@@ -3,6 +3,25 @@ import numpy as np
 import os
 import subprocess
 
+_SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+_OUTPUT_DIR = os.path.join(_SCRIPT_DIR, "normal_photo_captures")
+
+
+def _next_normal_photo_path() -> str:
+    os.makedirs(_OUTPUT_DIR, exist_ok=True)
+    prefix, suffix = "normal_photo_", ".jpg"
+    highest = -1
+    for name in os.listdir(_OUTPUT_DIR):
+        if not name.startswith(prefix) or not name.endswith(suffix):
+            continue
+        mid = name[len(prefix) : -len(suffix)]
+        if len(mid) != 3 or not mid.isdigit():
+            continue
+        highest = max(highest, int(mid))
+    n = highest + 1
+    return os.path.join(_OUTPUT_DIR, f"{prefix}{n:03d}{suffix}")
+
+
 # 1. Force the sensor to output maximum data
 subprocess.run(['v4l2-ctl', '-d', '/dev/v4l-subdev0', '-c', 'exposure=1200,analogue_gain=150,digital_gain=2000'])
 subprocess.run(['v4l2-ctl', '-d', '/dev/video0', '--set-fmt-video=width=1280,height=720,pixelformat=RG10', '--stream-mmap', '--stream-count=1', '--stream-to=test_raw_auto.bin'])
@@ -42,6 +61,7 @@ hsv = cv2.cvtColor(final_img, cv2.COLOR_BGR2HSV)
 hsv[:,:,1] = np.clip(hsv[:,:,1] * 1.2, 0, 255)
 final_img = cv2.cvtColor(hsv, cv2.COLOR_HSV2BGR)
 
-# Write output file
-cv2.imwrite('normal_photo.jpg', final_img)
-print("Saved simulated regular photo as normal_photo.jpg")
+# Write output file (incrementing name in normal_photo_captures/)
+out_path = _next_normal_photo_path()
+cv2.imwrite(out_path, final_img)
+print(f"Saved simulated regular photo as {out_path}")
