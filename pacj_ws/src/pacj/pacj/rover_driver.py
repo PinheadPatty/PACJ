@@ -1,9 +1,11 @@
-import rclpy
-from rclpy.node import Node
-from geometry_msgs.msg import Twist
-from std_msgs.msg import String
-from dynamixel_sdk import *
 import threading
+import time
+
+import rclpy
+from dynamixel_sdk import *
+from geometry_msgs.msg import Twist
+from rclpy.node import Node
+from std_msgs.msg import String
 
 class RoverDriver(Node):
     def __init__(self):
@@ -22,8 +24,9 @@ class RoverDriver(Node):
         
         # Coupling Settings (ID 3)
         self.COUPLE_ID    = 3
-        self.POS_OPEN     = 2570     
-        self.POS_CLOSED   = 3500    
+        self.POS_OPEN     = None
+        self.CLOSE_OFFSET = int(self.declare_parameter('coupler_close_offset', 1000).value)
+        self.POS_CLOSED   = None
         self.COUPLE_SPEED = 30      # Set once at startup (Steady crawl)
         self.SAFE_PWM     = 250     # Power cap to protect gears
         
@@ -35,6 +38,7 @@ class RoverDriver(Node):
         self.ADDR_PROF_VELOCITY   = 112
         self.ADDR_GOAL_POSITION   = 116
         self.ADDR_GOAL_VELOCITY   = 104
+        self.ADDR_PRESENT_POSITION = 132
         self.ADDR_PRESENT_VOLTAGE = 144
 
         # --- 3. HARDWARE INIT ---
@@ -58,7 +62,15 @@ class RoverDriver(Node):
         self.create_timer(2.0, self.battery_monitor_callback)
 
         self.get_logger().info("--- Rover Driver Online ---")
-        self.get_logger().info("Send 'open' or 'close' to /coupling")
+        self.get_logger().info(
+            "Coupler commands on /coupling: '0' (open), '1' (close), "
+            "'open', 'close', any value in [0,1], 'relax', "
+            "'set_open', 'status'"
+        )
+        self.get_logger().info(
+            f"Current coupler endpoints: open={self.POS_OPEN}, "
+            f"close={self.POS_CLOSED} (offset={self.CLOSE_OFFSET})"
+        )
 
     def setup_hardware(self):
         """Initializes all motors. Torque is toggled here to set limits safely."""
@@ -81,6 +93,114 @@ class RoverDriver(Node):
             # Error Code 0x20 is Overload. If triggered, the LED will blink and torque will drop.
             self.packet_handler.write1ByteTxRx(self.port_handler, self.COUPLE_ID, 48, 0x20)
 
+    def recompute_closed_position(self):
+        self.POS_CLOSED = self.POS_OPEN + self.CLOSE_OFFSET
+
+    def read_coupler_position(self):
+        with self.comm_lock:
+            position, res, err = self.packet_handler.read4ByteTxRx(
+                self.port_handler, self.COUPLE_ID, self.ADDR_PRESENT_POSITION
+            )
+
+        if res != COMM_SUCCESS:
+            self.get_logger().error(
+                f"Read position failed: {self.packet_handler.getTxRxResult(res)}"
+            )
+            return None
+        if err != 0:
+            self.get_logger().error(
+                f"Read position hardware error: {self.packet_handler.getRxPacketError(err)}"
+            )
+            return None
+
+        return int(position)
+
+    def set_torque(self, enabled):
+        with self.comm_lock:
+            self.packet_handler.write1ByteTxRx(
+                self.port_handler, self.COUPLE_ID, self.ADDR_TORQUE_ENABLE, 1 if enabled else 0
+            )
+
+    def capture_coupler_open(self):
+        position = self.read_coupler_position()
+        if position is None:
+            return
+
+        self.POS_OPEN = position
+        self.recompute_closed_position()
+        self.get_logger().info(
+            f"Captured OPEN endpoint at {position}; CLOSE auto-set to {self.POS_CLOSED} "
+            f"(offset={self.CLOSE_OFFSET})"
+        )
+
+    def get_target_position_from_command(self, command):
+        if self.POS_OPEN is None or self.POS_CLOSED is None:
+            self.get_logger().error(
+                "Coupler is not calibrated! You must set the open position first "
+                "by sending 'set_open' or using 'relax' then 'set_open'."
+            )
+            return None, None
+
+        if self.POS_OPEN == self.POS_CLOSED:
+            self.get_logger().error(
+                "Open and close endpoints are identical. Recalibrate with "
+                "'relax' then 'set_open'."
+            )
+            return None, None
+
+        if command == 'open':
+            normalized = 0.0
+        elif command == 'close':
+            normalized = 1.0
+        else:
+            try:
+                normalized = float(command)
+            except ValueError:
+                return None, None
+
+        if normalized < 0.0 or normalized > 1.0:
+            self.get_logger().warn(
+                f"Coupler value {normalized:.3f} is outside [0,1], clamping."
+            )
+        normalized = max(0.0, min(1.0, normalized))
+
+        target = int(round(self.POS_OPEN + normalized * (self.POS_CLOSED - self.POS_OPEN)))
+        return target, normalized
+
+    def move_coupler(self, target_pos, normalized):
+        self.set_torque(True)
+        with self.comm_lock:
+            res, err = self.packet_handler.write4ByteTxRx(
+                self.port_handler,
+                self.COUPLE_ID,
+                self.ADDR_GOAL_POSITION,
+                target_pos,
+            )
+
+        if res != COMM_SUCCESS:
+            self.get_logger().error(f"Coupler move failed: {self.packet_handler.getTxRxResult(res)}")
+        elif err != 0:
+            self.get_logger().error(f"Coupler hardware error: {self.packet_handler.getRxPacketError(err)}")
+        else:
+            self.get_logger().info(
+                f"Coupler moving to normalized={normalized:.2f} -> position {target_pos}"
+            )
+
+    def relax_coupler_for_calibration(self, duration_sec=30):
+        self.set_torque(False)
+        self.get_logger().info(
+            "Calibration mode: torque OFF for 30s. Move coupler by hand, then send "
+            "'set_open'."
+        )
+
+        for i in range(duration_sec):
+            position = self.read_coupler_position()
+            if position is not None:
+                self.get_logger().info(f"Calibration step {i+1}/{duration_sec} - Position: {position}")
+            time.sleep(1.0)
+
+        self.get_logger().info("Calibration window ended. Send motion command to re-enable torque.")
+
     def get_4byte_param(self, value):
         val = int(value)
         return [DXL_LOBYTE(DXL_LOWORD(val)), DXL_HIBYTE(DXL_LOWORD(val)), 
@@ -96,60 +216,53 @@ class RoverDriver(Node):
             self.groupSyncWrite.addParam(2, self.get_4byte_param(-right))
             self.groupSyncWrite.txPacket()
 
-    # TO OPEN: ros2 topic pub --once /coupling std_msgs/String "data: 'open'"
-    # TO CLOSE: ros2 topic pub --once /coupling std_msgs/String "data: 'close'"
-    # TO RELAX:  ros2 topic pub --once /coupling std_msgs/String "data: 'relax'"
+    # Step 1: TO RELAX: 
+    # ros2 topic pub --once /coupling std_msgs/String "data: 'relax'"
+
+    # Step 2: CAPTURE OPEN by hand:
+    # ros2 topic pub --once /coupling std_msgs/String "data: 'set_open'"
+
+    # Step 3: TO OPEN:  
+    # ros2 topic pub --once /coupling std_msgs/String "data: '0'"
+
+    # Step 4: TO CLOSE: 
+    # ros2 topic pub --once /coupling std_msgs/String "data: '1'"
+    
+    
     def coupling_callback(self, msg):
-        import time
         command = msg.data.lower().strip()
 
-        # --- 1. CALIBRATION MODE ('relax') ---
-        # This unlocks the motor and prints the position for 30 seconds
         if command == 'relax':
-            with self.comm_lock:
-                self.packet_handler.write1ByteTxRx(self.port_handler, self.COUPLE_ID, self.ADDR_TORQUE_ENABLE, 0)
-            
-            self.get_logger().info("!!! CALIBRATION START: Motor Unlocked for 30s !!!")
-            
-            for i in range(30):
-                with self.comm_lock:
-                    pos, res, err = self.packet_handler.read4ByteTxRx(
-                        self.port_handler, self.COUPLE_ID, 132 # Present Position
-                    )
-                if res == 0: # COMM_SUCCESS
-                    self.get_logger().info(f"Step {i+1}/30 - Position: {pos}")
-                else:
-                    self.get_logger().error("Read Failed! Check connection.")
-                time.sleep(1.0) # Poll once per second
-                
-            self.get_logger().info("!!! CALIBRATION ENDED. Send 'open' or 'close' to re-engage. !!!")
+            self.relax_coupler_for_calibration()
             return
 
-        # --- 2. MOVEMENT COMMANDS ('open' / 'close') ---
-        target_pos = self.POS_OPEN if command == 'open' else self.POS_CLOSED if command == 'close' else None
-
-        if target_pos is None:
-            self.get_logger().warn(f"Unknown command: {command}")
+        if command == 'set_open':
+            self.capture_coupler_open()
             return
 
-        with self.comm_lock:
-            # SAFETY: Ensure torque is ON before moving (re-engages after relax)
-            self.packet_handler.write1ByteTxRx(self.port_handler, self.COUPLE_ID, self.ADDR_TORQUE_ENABLE, 1)
-            
-            # Send the goal position
-            res, err = self.packet_handler.write4ByteTxRx(
-                self.port_handler, 
-                self.COUPLE_ID, 
-                self.ADDR_GOAL_POSITION, 
-                target_pos
+        if command == 'set_close':
+            self.get_logger().warn(
+                "set_close is deprecated. Close is auto-computed as open + offset. "
+                "Use 'set_open' only."
             )
-            
-            if res != 0: # Not COMM_SUCCESS
-                self.get_logger().error(f"Coupler Move FAILED: {self.packet_handler.getTxRxResult(res)}")
-            elif err != 0:
-                self.get_logger().error(f"Coupler Hardware Error: {self.packet_handler.getRxPacketError(err)}")
-            else:
-                self.get_logger().info(f"Coupler moving to {command.upper()} ({target_pos})")
+            return
+
+        if command == 'status':
+            self.get_logger().info(
+                f"Coupler endpoints: open={self.POS_OPEN}, close={self.POS_CLOSED}, "
+                f"offset={self.CLOSE_OFFSET}"
+            )
+            return
+
+        target_pos, normalized = self.get_target_position_from_command(command)
+        if target_pos is None:
+            self.get_logger().warn(
+                f"Unknown coupling command: '{command}'. Use 0/1, open/close, "
+                "or a value in [0,1]."
+            )
+            return
+
+        self.move_coupler(target_pos, normalized)
    
     # TO CHECK: ros2 topic echo /battery_status --once
     def battery_monitor_callback(self):
