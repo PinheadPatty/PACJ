@@ -123,7 +123,7 @@ def generate_launch_description():
         # interactive_setpoint,
         # drone_planner,
         drone_slam,
-        rover_slam,
+        # rover_slam,
         rviz_drone,
-        rviz_rover
+        # rviz_rover
     ])
