@@ -37,6 +37,7 @@ setup(
             'tf_broadcaster = pacj.tf_broadcaster:main',
             'interactive_setpoint = pacj.interactive_setpoint:main',
             'drone_planner = pacj.drone_planner:main',
+            'camera_rgb_stream = pacj.camera_rgb_stream_node:main',
         ],
     },
 )
