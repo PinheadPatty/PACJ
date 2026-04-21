@@ -6,6 +6,9 @@ Edit the TUNING block below; command-line flags only override paths and verbosit
 Discoloration (magenta/green, mesh): often an *odd* RAW_VERTICAL_ROLL_ROWS with the wrong
 Bayer line phase vs OpenCV — enable BAYER_ROW_PHASE_COMPENSATE, or use an even roll, or
 tune RAW_COLUMN_SHIFT_COLS / BAYER_PATTERN / DEMOSAIC_QUALITY.
+
+After demosaic, optional BGR seam repair (SEAM_REPAIR_*) softens the np.roll boundary for
+OpenCV ArUco and other vision on the final color image.
 """
 
 import argparse
@@ -72,6 +75,13 @@ RAW_VERTICAL_ROLL_ROWS = 410
 SWAP_BGR_TOP_BOTTOM_HALVES = False
 BGR_VERTICAL_ROLL_ROWS = 0
 
+# --- Raw-roll seam repair (BGR, after demosaic) ---
+# np.roll on the Bayer plane leaves a sharp row band that demosaic spreads; interpolating
+# those rows on the final BGR image keeps OpenCV ArUco edges cleaner than a bright seam.
+SEAM_REPAIR_AFTER_RAW_ROLL = True
+# Half-width in rows around the wrap seam: anchors are seam±(half_width+1); try 1–4.
+SEAM_REPAIR_HALF_WIDTH = 2
+
 # --- Color / toning (after demosaic) ---
 TARGET_LUMA_MEAN = 120.0  # higher → brighter overall
 SATURATION_MULTIPLIER = 1.05  # lower reduces false-color pop after bad demosaic (was 1.2)
@@ -99,6 +109,41 @@ def _resolved_bayer_pattern(raw_vertical_roll_rows: int) -> str:
     if BAYER_ROW_PHASE_COMPENSATE and (raw_vertical_roll_rows % 2) != 0:
         key = _BAYER_ROW_FLIP.get(key, key)
     return key
+
+
+def _repair_roll_seam_bgr(
+    img: np.ndarray, roll_rows: int, half_width: int
+) -> np.ndarray:
+    """
+    Replace rows near the np.roll wrap boundary (from RAW_VERTICAL_ROLL_ROWS) with linear
+    interpolation between clean rows above and below. Operates on uint8 BGR for OpenCV
+    ArUco and downstream vision.
+    """
+    if roll_rows == 0 or half_width <= 0:
+        return img
+    if img.ndim != 3 or img.shape[2] != 3:
+        return img
+    h = img.shape[0]
+    if h < 3:
+        return img
+
+    seam = (h - roll_rows) % h
+    if seam == 0:
+        return img
+
+    r_top = max(0, seam - half_width - 1)
+    r_bot = min(h - 1, seam + half_width + 1)
+    if r_bot <= r_top + 1:
+        return img
+
+    out = img.astype(np.float32)
+    top_f = out[r_top]
+    bot_f = out[r_bot]
+    span = float(r_bot - r_top)
+    for row in range(r_top + 1, r_bot):
+        t = (row - r_top) / span
+        out[row] = (1.0 - t) * top_f + t * bot_f
+    return np.clip(out, 0.0, 255.0).astype(np.uint8)
 
 
 def _bayer_cv2_code(pattern_key: str, quality: str) -> int:
@@ -257,6 +302,8 @@ def _raw_to_bgr(raw: np.ndarray, raw_vertical_roll_rows: int) -> np.ndarray:
     out = _apply_vertical_geometry_2d(
         out, SWAP_BGR_TOP_BOTTOM_HALVES, BGR_VERTICAL_ROLL_ROWS
     )
+    if SEAM_REPAIR_AFTER_RAW_ROLL:
+        out = _repair_roll_seam_bgr(out, raw_vertical_roll_rows, SEAM_REPAIR_HALF_WIDTH)
     return out
 
 
