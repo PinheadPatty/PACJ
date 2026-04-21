@@ -85,7 +85,7 @@ class RoverDriver(Node):
             # Coupling Motor Initialization
             self.get_logger().info(f"Configuring Coupling Motor (ID {self.COUPLE_ID})...")
             self.packet_handler.write1ByteTxRx(self.port_handler, self.COUPLE_ID, self.ADDR_TORQUE_ENABLE, 0)
-            self.packet_handler.write1ByteTxRx(self.port_handler, self.COUPLE_ID, self.ADDR_OPERATING_MODE, 3) # Position Mode
+            self.packet_handler.write1ByteTxRx(self.port_handler, self.COUPLE_ID, self.ADDR_OPERATING_MODE, 4) # Position Mode
             self.packet_handler.write2ByteTxRx(self.port_handler, self.COUPLE_ID, self.ADDR_PWM_LIMIT, self.SAFE_PWM)
             # Set the speed limit ONCE while torque is off
             self.packet_handler.write4ByteTxRx(self.port_handler, self.COUPLE_ID, self.ADDR_PROF_VELOCITY, self.COUPLE_SPEED)
@@ -94,7 +94,7 @@ class RoverDriver(Node):
             self.packet_handler.write1ByteTxRx(self.port_handler, self.COUPLE_ID, 48, 0x20)
 
     def recompute_closed_position(self):
-        self.POS_CLOSED = self.POS_OPEN + self.CLOSE_OFFSET
+        self.POS_CLOSED = self.POS_OPEN - self.CLOSE_OFFSET
 
     def read_coupler_position(self):
         with self.comm_lock:
