@@ -626,12 +626,10 @@
         var title = (item.title && String(item.title).trim()) || 'Demo clip';
         if (!id) continue;
         rows.push({ id: id, title: title, description: (item.description && String(item.description)) || '' });
-        if (
-          featuredIndex === -1 &&
-          (/full\s*demo/i.test(title) || /end[\s-]*to[\s-]*end mission/i.test(title))
-        ) {
-          featuredIndex = rows.length - 1;
-        }
+      }
+
+      if (rows.length) {
+        featuredIndex = 0;
       }
 
       if (PACJ_DRIVE_FOLDER_URL && String(PACJ_DRIVE_FOLDER_URL).trim()) {
