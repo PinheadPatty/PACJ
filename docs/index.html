@@ -527,10 +527,9 @@
       var PACJ_DRIVE_FOLDER_URL = '';
       var PACJ_DRIVE_DEMOS = [
         {
-          title: 'Full Demo',
-          description: 'Startup, navigation, coupling, transport, and redeployment.',
-          // update this since we didnt show uncoupling
-          driveUrlOrId: 'https://drive.google.com/file/d/1YKTXYjdVCXmE2HAX65R3mgLhpUbCfmyh/view?usp=sharing',
+          title: 'Full (Drone & Rover) Demo w/ RTABMAP',
+          description: 'End-to-end mission run through. RTABMAP on drone/rover. Agents start uncoupled. Drone flies over to the rover, couples, and flies with the rover. The drone then lands and uncouples, and flies away.',
+          driveUrlOrId: 'https://drive.google.com/file/d/1xD3_MWRgYv7J05Cl_y-KsJRxjPALR36b/view?usp=sharing',
         },
         {
           title: 'Coupling Method CAD',
@@ -548,15 +547,9 @@
           driveUrlOrId: 'https://drive.google.com/file/d/1ImJMzOU6rXHKfP1f2Bc9jQS2si5wg2eK/view?usp=sharing',
         },
         {
-          title: 'Swing Test',
-          description: "Engaging our coupler system, and displaing it's structural integrity.",
+          title: 'Coupling and Swing Test',
+          description: "Drone starting uncoupled and clearly being coupled from the rover. Manual swing test is done to displace the structural integrity.",
           driveUrlOrId: 'https://drive.google.com/file/d/1mT6-ip8klAJmD7F4UsftVWCi_cR7f4eB/view?usp=sharing',
-        },
-        {
-          title: 'Coupling',
-          description: "Drone starting uncoupled and clearly being coupled from the rover.",
-          // change this URL
-          driveUrlOrId: 'https://drive.google.com/file/d/1YKTXYjdVCXmE2HAX65R3mgLhpUbCfmyh/view?usp=sharing',
         },
         {
           title: 'Uncoupling Test',
@@ -603,6 +596,11 @@
           description: "The drone takes off while coupled to the rover, demonstrating sufficient thrust margin for vertical lift with payload.",
           driveUrlOrId: 'https://drive.google.com/file/d/1IUBDV7d1bDnTut9BCriNu7BtVZmwTvml/view?usp=sharing',
         },
+        {
+          title: 'First Full Drone Demo',
+          description: 'First time running the full demo! Starts uncoupled, drone flies over to the rover, couples, and they fly together.',
+          driveUrlOrId: 'https://drive.google.com/file/d/1Xo0i4Bo-3nP0mtlDX0ntitX2BkTmKive/view?usp=sharing',
+        },
       ];
 
       function parseDriveFileId(raw) {
@@ -628,7 +626,10 @@
         var title = (item.title && String(item.title).trim()) || 'Demo clip';
         if (!id) continue;
         rows.push({ id: id, title: title, description: (item.description && String(item.description)) || '' });
-        if (featuredIndex === -1 && /end[\s-]*to[\s-]*end mission/i.test(title)) {
+        if (
+          featuredIndex === -1 &&
+          (/full\s*demo/i.test(title) || /end[\s-]*to[\s-]*end mission/i.test(title))
+        ) {
           featuredIndex = rows.length - 1;
         }
       }
