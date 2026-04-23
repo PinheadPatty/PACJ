@@ -30,13 +30,21 @@ def generate_launch_description():
         }.items()
     )
 
-    pi_camera = Node(
-        package='v4l2_camera',
-        executable='v4l2_camera_node',
-        name='pi_camera',
+    camera_node = Node(
+        package='camera_ros',
+        executable='camera_node',
+        name='downward_camera',
+        output='screen',
         parameters=[{
-            'image_size': [1920, 1080],
-        }]
+            'width': 640,
+            'height': 480,
+            'frame_id': 'downward_camera_optical_frame',
+            # 'camera': 0,  # or string id from rpicam-hello --list-cameras
+        }],
+        remappings=[
+            ('image_raw', '/downward_camera/image_raw'),
+            ('camera_info', '/downward_camera/camera_info'),
+        ],
     )
 
     # Gated: publish_setpoints + Offboard; then publish_velocity / publish_position /
@@ -61,7 +69,7 @@ def generate_launch_description():
 
     return LaunchDescription([
         # offboard_controller,
-        # pi_camera,
+        camera_node,
         # (5s Delay)
         TimerAction(
             period=5.0,

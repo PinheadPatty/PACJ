@@ -7,6 +7,8 @@
   <maintainer email="pacj@todo.todo">pacj</maintainer>
   <license>TODO: License declaration</license>
 
+  <exec_depend>camera_ros</exec_depend>
+
   <depend>rclpy</depend>
   <depend>sensor_msgs</depend>
   <depend>nav_msgs</depend>
