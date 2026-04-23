@@ -15,6 +15,10 @@ setup(
         (os.path.join('share', package_name, 'launch'), glob('launch/*.launch.py')),
         (os.path.join('share', package_name, 'rviz'), glob('rviz/*.rviz')),
         (os.path.join('share', package_name, 'params'), glob('params/*')),
+        (
+            os.path.join('share', package_name, 'docs', 'launch-node-imports'),
+            glob('docs/launch-node-imports/*.md'),
+        ),
     ],
     install_requires=['setuptools'],
     zip_safe=True,
