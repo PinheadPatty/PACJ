@@ -52,18 +52,13 @@ class CharucoCalibrationNode(Node):
         self._min_captures = int(self.get_parameter("min_captures").value)
 
         aruco_dict = cv2.aruco.getPredefinedDictionary(dict_id)
+        self._aruco_dict = aruco_dict
+        self._aruco_params = cv2.aruco.DetectorParameters()
         self._board = cv2.aruco.CharucoBoard(
             (sx, sy),
             square_length,
             marker_length,
             aruco_dict,
-        )
-        detector_params = cv2.aruco.DetectorParameters()
-        charuco_params = cv2.aruco.CharucoParameters()
-        self._charuco_detector = cv2.aruco.CharucoDetector(
-            self._board,
-            charuco_params,
-            detector_params,
         )
 
         self._all_corners: List[np.ndarray] = []
@@ -94,10 +89,26 @@ class CharucoCalibrationNode(Node):
         frame = self._bridge.imgmsg_to_cv2(msg, desired_encoding="bgr8")
         self._image_size = (frame.shape[1], frame.shape[0])
 
-        charuco_corners, charuco_ids, _, _ = self._charuco_detector.detectBoard(frame)
+        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+
+        # Use the older, widely-available OpenCV ArUco/ChArUco API.
+        corners, ids, _rejected = cv2.aruco.detectMarkers(
+            gray, self._aruco_dict, parameters=self._aruco_params
+        )
+
+        charuco_corners = None
+        charuco_ids = None
+        if ids is not None and len(ids) > 0:
+            _retval, charuco_corners, charuco_ids = cv2.aruco.interpolateCornersCharuco(
+                markerCorners=corners,
+                markerIds=ids,
+                image=gray,
+                board=self._board,
+            )
         annotated = frame.copy()
 
         if charuco_ids is not None and len(charuco_ids) >= 4:
+            cv2.aruco.drawDetectedMarkers(annotated, corners, ids)
             cv2.aruco.drawDetectedCornersCharuco(annotated, charuco_corners, charuco_ids)
             n = len(charuco_ids)
             cv2.putText(
