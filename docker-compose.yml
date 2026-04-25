@@ -3,7 +3,8 @@ services:
     build:
       context: .
       dockerfile: docker/laptop/Dockerfile
-    network_mode: host
+    ports:
+      - "8765:8765"
     restart: unless-stopped
     environment:
       - ROS_DOMAIN_ID=67
