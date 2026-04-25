@@ -41,7 +41,6 @@ setup(
     },
     entry_points={
         'console_scripts': [
-            'decompressor = pacj.decompress:main',
             'rover_driver = pacj.rover_driver:main',
             'battery = pacj.battery:main',
             'interactive_setpoint = pacj.interactive_setpoint:main',

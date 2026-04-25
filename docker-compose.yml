@@ -1,0 +1,9 @@
+services:
+  laptop:
+    build:
+      context: .
+      dockerfile: docker/laptop/Dockerfile
+    network_mode: host
+    restart: unless-stopped
+    environment:
+      - ROS_DOMAIN_ID=67

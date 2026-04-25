@@ -114,7 +114,7 @@ def generate_launch_description():
         drone_status,
         # offboard_controller,
         downward_camera_node,
-        aruco_detector_node,
+        # aruco_detector_node,
         # (5s Delay)
         TimerAction(
             period=5.0,
