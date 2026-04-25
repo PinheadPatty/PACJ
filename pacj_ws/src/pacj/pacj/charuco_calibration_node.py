@@ -17,7 +17,6 @@ from __future__ import annotations
 import os
 from typing import List, Optional, Tuple
 
-import cv2
 import numpy as np
 import yaml
 
@@ -28,6 +27,33 @@ from rclpy.qos import HistoryPolicy, QoSProfile, ReliabilityPolicy
 from cv_bridge import CvBridge
 from sensor_msgs.msg import Image
 from std_srvs.srv import Trigger
+
+
+def _opencv_preimport_env() -> None:
+    # Reduce odds of GUI backends initializing in headless/SSH contexts.
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    # Helpful on some ARM setups when OpenCV pulls in GL stacks unexpectedly.
+    os.environ.setdefault("LIBGL_ALWAYS_SOFTWARE", "1")
+
+
+def _opencv_postimport_init() -> None:
+    import cv2
+
+    # Avoid rare crashes / oversubscription on embedded CPUs.
+    try:
+        cv2.setUseOptimized(False)
+    except Exception:
+        pass
+    try:
+        cv2.setNumThreads(1)
+    except Exception:
+        pass
+
+
+_opencv_preimport_env()
+import cv2  # noqa: E402
+
+_opencv_postimport_init()
 
 
 class CharucoCalibrationNode(Node):
@@ -121,12 +147,19 @@ class CharucoCalibrationNode(Node):
         charuco_corners = None
         charuco_ids = None
         if ids is not None and len(ids) > 0:
-            _retval, charuco_corners, charuco_ids = cv2.aruco.interpolateCornersCharuco(
+            ich = cv2.aruco.interpolateCornersCharuco(
                 markerCorners=corners,
                 markerIds=ids,
                 image=gray,
                 board=self._board,
             )
+            # OpenCV versions differ on return arity; be defensive.
+            if isinstance(ich, tuple) and len(ich) >= 3:
+                charuco_corners = ich[1]
+                charuco_ids = ich[2]
+            else:
+                charuco_corners = None
+                charuco_ids = None
         annotated = frame.copy()
 
         if charuco_ids is not None and len(charuco_ids) >= 4:
@@ -282,17 +315,20 @@ class CharucoCalibrationNode(Node):
 
 def main(args=None) -> None:
     rclpy.init(args=args)
-    node = CharucoCalibrationNode()
+    node: Optional[CharucoCalibrationNode] = None
     try:
+        node = CharucoCalibrationNode()
         rclpy.spin(node)
     except KeyboardInterrupt:
         pass
     finally:
         try:
-            cv2.destroyAllWindows()
+            if node is not None and (not getattr(node, "_headless", True)):
+                cv2.destroyAllWindows()
         except Exception:
             pass
-        node.destroy_node()
+        if node is not None:
+            node.destroy_node()
         rclpy.shutdown()
 
 
