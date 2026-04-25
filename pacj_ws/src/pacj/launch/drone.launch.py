@@ -1,5 +1,5 @@
 from launch import LaunchDescription
-from launch.actions import IncludeLaunchDescription, TimerAction
+from launch.actions import IncludeLaunchDescription, TimerAction, ExecuteProcess
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch_ros.actions import Node
 import os
@@ -9,24 +9,35 @@ def generate_launch_description():
     orbbec_pkg = get_package_share_directory('orbbec_camera')
     orbbec_launch_path = os.path.join(orbbec_pkg, 'launch', 'gemini_330_series.launch.py')
 
+    uxrce_agent = ExecuteProcess(
+        cmd=[
+            '/usr/local/bin/MicroXRCEAgent',
+            'serial',
+            '--dev', '/dev/ttyAMA0',
+            '-b', '921600',
+        ],
+        output='screen',
+    )
+    
     drone_camera = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(orbbec_launch_path),
         launch_arguments={
             'camera_name': 'drone',
-            'enable_sync': 'true',
-            'depth_registration': 'true',
+            'enable_sync': 'false',
+            'depth_registration': 'false',
             'enable_color': 'true',
             'enable_depth': 'true',
-            # --- New "Lower CPU" Settings ---
             'color_width': '424',
             'color_height': '240',
             'color_fps': '6',
             'depth_width': '480',
             'depth_height': '270',
             'depth_fps': '6',
-            'color_format': 'MJPEG',          # High compression to save USB bandwidth
-            'enable_point_cloud': 'false',    # Let RTAB-Map handle the 3D math instead
-            # --------------------------------
+            'color_format': 'MJPEG',
+            'enable_point_cloud': 'false',
+            'enable_laser': 'false',
+            'laser_energy_level': '-1',
+            'connection_delay': '500',
         }.items()
     )
 
@@ -68,6 +79,7 @@ def generate_launch_description():
     )
 
     return LaunchDescription([
+        uxrce_agent,
         # offboard_controller,
         downward_camera_node,
         # (5s Delay)
