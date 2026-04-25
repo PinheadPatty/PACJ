@@ -27,6 +27,7 @@ from rclpy.qos import HistoryPolicy, QoSProfile, ReliabilityPolicy
 
 from cv_bridge import CvBridge
 from sensor_msgs.msg import Image
+from std_srvs.srv import Trigger
 
 
 class CharucoCalibrationNode(Node):
@@ -41,6 +42,7 @@ class CharucoCalibrationNode(Node):
         self.declare_parameter("image_topic", "/downward_camera/image_raw")
         self.declare_parameter("output_path", "~/camera_calibration.yaml")
         self.declare_parameter("min_captures", 15)
+        self.declare_parameter("headless", False)
 
         sx = int(self.get_parameter("squares_x").value)
         sy = int(self.get_parameter("squares_y").value)
@@ -50,6 +52,11 @@ class CharucoCalibrationNode(Node):
         image_topic = str(self.get_parameter("image_topic").value)
         self._output_path = os.path.expanduser(str(self.get_parameter("output_path").value))
         self._min_captures = int(self.get_parameter("min_captures").value)
+        headless_param = bool(self.get_parameter("headless").value)
+
+        # OpenCV highgui is fragile in headless/SSH sessions and can segfault.
+        # If DISPLAY isn't set, force headless regardless of the param.
+        self._headless = headless_param or (os.environ.get("DISPLAY") in (None, ""))
 
         aruco_dict = cv2.aruco.getPredefinedDictionary(dict_id)
         self._aruco_dict = aruco_dict
@@ -75,14 +82,26 @@ class CharucoCalibrationNode(Node):
             depth=1,
         )
         self.create_subscription(Image, image_topic, self._image_cb, sensor_qos)
-        self.create_timer(0.1, self._display_and_keys)
+        if not self._headless:
+            self.create_timer(0.1, self._display_and_keys)
+
+        # Headless control via ROS services (works over SSH).
+        self.create_service(Trigger, "capture", self._srv_capture)
+        self.create_service(Trigger, "calibrate", self._srv_calibrate)
 
         self.get_logger().info(
             f"ChArUco calibration ({sx}×{sy} squares, {square_length * 1000:.0f} mm square, "
             f"{marker_length * 1000:.0f} mm markers, dict_id={dict_id})\n"
             f"  image_topic={image_topic}\n"
             f"  output_path={self._output_path}\n"
-            "  [c] capture  [s] calibrate & save YAML  [q] quit"
+            (
+                "  [c] capture  [s] calibrate & save YAML  [q] quit"
+                if not self._headless
+                else "  headless=True (no OpenCV window)\n"
+                     "  services:\n"
+                     "    ros2 service call /charuco_calibration/capture std_srvs/srv/Trigger {}\n"
+                     "    ros2 service call /charuco_calibration/calibrate std_srvs/srv/Trigger {}"
+            )
         )
 
     def _image_cb(self, msg: Image) -> None:
@@ -147,8 +166,14 @@ class CharucoCalibrationNode(Node):
     def _display_and_keys(self) -> None:
         if self._latest_annotated is None:
             return
-        cv2.imshow("ChArUco calibration (pacj)", self._latest_annotated)
-        key = cv2.waitKey(1) & 0xFF
+        try:
+            cv2.imshow("ChArUco calibration (pacj)", self._latest_annotated)
+            key = cv2.waitKey(1) & 0xFF
+        except Exception as e:
+            # If highgui fails at runtime (common over SSH), switch to headless.
+            self.get_logger().error(f"OpenCV GUI failed ({e}); switching to headless mode.")
+            self._headless = True
+            return
 
         if key == ord("c"):
             self._capture()
@@ -159,6 +184,32 @@ class CharucoCalibrationNode(Node):
             cv2.destroyAllWindows()
             rclpy.shutdown()
 
+    def _srv_capture(self, _req: Trigger.Request, res: Trigger.Response) -> Trigger.Response:
+        before = len(self._all_ids)
+        self._capture()
+        after = len(self._all_ids)
+        if after > before:
+            res.success = True
+            res.message = f"Captured frame #{after}."
+        else:
+            res.success = False
+            res.message = "Capture skipped (no frame yet, or not enough corners)."
+        return res
+
+    def _srv_calibrate(self, _req: Trigger.Request, res: Trigger.Response) -> Trigger.Response:
+        try:
+            self._calibrate_and_save()
+            # _calibrate_and_save() logs details; treat missing captures as failure.
+            if len(self._all_ids) < self._min_captures:
+                res.success = False
+                res.message = f"Need at least {self._min_captures} captures."
+            else:
+                res.success = True
+                res.message = f"Saved calibration to {self._output_path}"
+        except Exception as e:
+            res.success = False
+            res.message = f"Calibration failed: {e}"
+        return res
     def _capture(self) -> None:
         if self._latest_frame is None:
             return
@@ -234,7 +285,10 @@ def main(args=None) -> None:
     except KeyboardInterrupt:
         pass
     finally:
-        cv2.destroyAllWindows()
+        try:
+            cv2.destroyAllWindows()
+        except Exception:
+            pass
         node.destroy_node()
         rclpy.shutdown()
 
