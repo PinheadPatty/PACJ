@@ -43,7 +43,7 @@ def generate_launch_description():
 
     downward_camera_node = Node(
         package='camera_ros',
-        executable='downward_camera_node',
+        executable='camera_node',
         name='downward_camera',
         output='screen',
         parameters=[{
