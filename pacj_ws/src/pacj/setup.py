@@ -4,6 +4,13 @@ from glob import glob
 
 package_name = 'pacj'
 
+_calibration_dir = 'calibration'
+_calibration_files = (
+    sorted(glob(os.path.join(_calibration_dir, '*')))
+    if os.path.isdir(_calibration_dir)
+    else []
+)
+
 setup(
     name=package_name,
     version='0.0.0',
@@ -15,7 +22,12 @@ setup(
         (os.path.join('share', package_name, 'launch'), glob('launch/*.launch.py')),
         (os.path.join('share', package_name, 'rviz'), glob('rviz/*.rviz')),
         (os.path.join('share', package_name, 'params'), glob('params/*')),
-    ],
+    ]
+    + (
+        [(os.path.join('share', package_name, 'calibration'), _calibration_files)]
+        if _calibration_files
+        else []
+    ),
     install_requires=['setuptools'],
     zip_safe=True,
     maintainer='pacj',

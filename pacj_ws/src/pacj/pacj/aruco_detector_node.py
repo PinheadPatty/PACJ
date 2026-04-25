@@ -9,6 +9,10 @@ Subscribes (defaults):
 Publishes (defaults):
   /aruco/pose        (geometry_msgs/PoseStamped) marker pose in the camera optical frame
   /aruco/image_debug (sensor_msgs/Image)         annotated image (optional)
+
+Default ``camera_calibration_file`` is ``.../pacj/calibration/camera_calibration.yaml``
+(same default as ChArUco capture). If missing or invalid, intrinsics come from
+``camera_info_topic``.
 """
 
 from __future__ import annotations
@@ -28,6 +32,8 @@ from rclpy.qos import HistoryPolicy, QoSProfile, ReliabilityPolicy
 from cv_bridge import CvBridge
 from geometry_msgs.msg import Point, PoseStamped, Quaternion
 from sensor_msgs.msg import CameraInfo, Image
+
+from pacj.charuco_capture_node import default_camera_calibration_yaml
 
 
 def _rotation_matrix_to_quaternion(R: np.ndarray) -> Tuple[float, float, float, float]:
@@ -77,7 +83,7 @@ class ArucoDetectorNode(Node):
         self.declare_parameter("marker_size", 0.046)
         self.declare_parameter("aruco_dict", 0)  # DICT_4X4_50
         self.declare_parameter("target_marker_id", -1)  # -1 = any
-        self.declare_parameter("camera_calibration_file", "")
+        self.declare_parameter("camera_calibration_file", default_camera_calibration_yaml())
         self.declare_parameter("image_topic", "/downward_camera/image_raw")
         self.declare_parameter("camera_info_topic", "/downward_camera/camera_info")
         self.declare_parameter("pose_topic", "/aruco/pose")

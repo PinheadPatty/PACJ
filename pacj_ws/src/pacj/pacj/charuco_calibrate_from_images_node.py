@@ -8,6 +8,9 @@ pacj.aruco_detector_node (camera_matrix.data, distortion_coefficients.data).
 
 Board defaults: 8×5 squares, 30 mm square, 22 mm markers, DICT_4X4_50.
 
+Default ``image_directory`` / ``output_yaml`` use the package ``calibration/``
+folder (shared helpers in ``charuco_capture_node``). Override with params or ``PACJ_CALIB_DIR``.
+
 Service:
   ~/calibrate (std_srvs/Trigger) — run calibration and write output_yaml.
 """
@@ -24,6 +27,8 @@ import rclpy
 from rclpy.node import Node
 
 from std_srvs.srv import Trigger
+
+from pacj.charuco_capture_node import default_camera_calibration_yaml, package_calibration_dir
 
 
 def _opencv_preimport_env() -> None:
@@ -85,8 +90,8 @@ class CharucoCalibrateFromImagesNode(Node):
     def __init__(self) -> None:
         super().__init__("charuco_calibrate_from_images")
 
-        self.declare_parameter("image_directory", "~/charuco_capture")
-        self.declare_parameter("output_yaml", "~/camera_calibration.yaml")
+        self.declare_parameter("image_directory", str(package_calibration_dir()))
+        self.declare_parameter("output_yaml", default_camera_calibration_yaml())
         self.declare_parameter("squares_x", 8)
         self.declare_parameter("squares_y", 5)
         self.declare_parameter("square_length", 0.030)

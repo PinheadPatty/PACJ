@@ -218,3 +218,7 @@ __marimo__/
 
 # PDF
 *.pdf
+
+*.png
+*.jpg
+*.jpeg

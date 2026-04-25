@@ -6,6 +6,9 @@ Subscribes to a sensor_msgs/Image topic (default /downward_camera/image_raw).
 Does not run ArUco/ChArUco detection — only writes the raw BGR frame when you
 call the save service (safe for headless / SSH).
 
+Default ``save_directory`` is under the ``pacj`` package ``calibration/`` folder
+(``package_calibration_dir()`` below). Override with param or ``PACJ_CALIB_DIR``.
+
 Service:
   ~/save (std_srvs/Trigger) — write current frame to save_directory as
          {file_prefix}{00000}.png (index auto-increments).
@@ -15,6 +18,7 @@ from __future__ import annotations
 
 import os
 import re
+from pathlib import Path
 from typing import Optional
 
 # Keep OpenCV from pulling GUI stacks when only imgcodecs is needed.
@@ -32,12 +36,37 @@ from sensor_msgs.msg import Image
 from std_srvs.srv import Trigger
 
 
+def package_calibration_dir() -> Path:
+    """Directory for ChArUco captures and ``camera_calibration.yaml``."""
+    env = os.environ.get("PACJ_CALIB_DIR", "").strip()
+    if env:
+        p = Path(os.path.expanduser(env))
+        p.mkdir(parents=True, exist_ok=True)
+        return p
+
+    root = Path(__file__).resolve().parent.parent
+    if (root / "package.xml").is_file():
+        p = root / "calibration"
+        p.mkdir(parents=True, exist_ok=True)
+        return p
+
+    from ament_index_python.packages import get_package_share_directory
+
+    p = Path(get_package_share_directory("pacj")) / "calibration"
+    p.mkdir(parents=True, exist_ok=True)
+    return p
+
+
+def default_camera_calibration_yaml() -> str:
+    return str(package_calibration_dir() / "camera_calibration.yaml")
+
+
 class CharucoCaptureNode(Node):
     def __init__(self) -> None:
         super().__init__("charuco_capture")
 
         self.declare_parameter("image_topic", "/downward_camera/image_raw")
-        self.declare_parameter("save_directory", "~/charuco_capture")
+        self.declare_parameter("save_directory", str(package_calibration_dir()))
         self.declare_parameter("file_prefix", "frame_")
         self.declare_parameter("file_extension", "png")  # png or jpg
 

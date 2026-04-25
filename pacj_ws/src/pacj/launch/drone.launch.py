@@ -6,6 +6,9 @@ import os
 from ament_index_python.packages import get_package_share_directory
 
 def generate_launch_description():
+    pacj_share = get_package_share_directory('pacj')
+    pacj_calib_yaml = os.path.join(pacj_share, 'calibration', 'camera_calibration.yaml')
+
     orbbec_pkg = get_package_share_directory('orbbec_camera')
     orbbec_launch_path = os.path.join(orbbec_pkg, 'launch', 'gemini_330_series.launch.py')
 
@@ -68,6 +71,7 @@ def generate_launch_description():
             'target_marker_id': -1,
             'image_topic': '/downward_camera/image_raw',
             'camera_info_topic': '/downward_camera/camera_info',
+            'camera_calibration_file': pacj_calib_yaml,
             'pose_topic': '/aruco/pose',
             'debug_image_topic': '/aruco/image_debug',
             'publish_debug_image': True,
