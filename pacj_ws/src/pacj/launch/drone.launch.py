@@ -1,7 +1,7 @@
 from launch import LaunchDescription
-from launch.actions import IncludeLaunchDescription, TimerAction, ExecuteProcess
+from launch.actions import IncludeLaunchDescription, TimerAction, ExecuteProcess, GroupAction
 from launch.launch_description_sources import PythonLaunchDescriptionSource
-from launch_ros.actions import Node
+from launch_ros.actions import Node, PushRosNamespace
 import os
 from ament_index_python.packages import get_package_share_directory
 
@@ -22,32 +22,36 @@ def generate_launch_description():
         output='screen',
     )
     
-    drone_camera = IncludeLaunchDescription(
-        PythonLaunchDescriptionSource(orbbec_launch_path),
-        launch_arguments={
-            'camera_name': 'drone',
-            'enable_sync': 'false',
-            'depth_registration': 'false',
-            'enable_color': 'true',
-            'enable_depth': 'true',
-            'color_width': '424',
-            'color_height': '240',
-            'color_fps': '6',
-            'depth_width': '480',
-            'depth_height': '270',
-            'depth_fps': '6',
-            'color_format': 'MJPEG',
-            'enable_point_cloud': 'false',
-            'enable_laser': 'false',
-            'laser_energy_level': '-1',
-            'connection_delay': '500',
-        }.items()
-    )
+    drone_camera = GroupAction([
+        PushRosNamespace('drone'),
+        IncludeLaunchDescription(
+            PythonLaunchDescriptionSource(orbbec_launch_path),
+            launch_arguments={
+                'camera_name': 'camera',
+                'enable_sync': 'false',
+                'depth_registration': 'false',
+                'enable_color': 'true',
+                'enable_depth': 'true',
+                'color_width': '424',
+                'color_height': '240',
+                'color_fps': '6',
+                'depth_width': '480',
+                'depth_height': '270',
+                'depth_fps': '6',
+                'color_format': 'MJPEG',
+                'enable_point_cloud': 'false',
+                'enable_laser': 'false',
+                'laser_energy_level': '-1',
+                'connection_delay': '500',
+            }.items()
+        ),
+    ])
 
     downward_camera_node = Node(
         package='camera_ros',
         executable='camera_node',
         name='downward_camera',
+        namespace='drone',
         output='screen',
         parameters=[{
             'width': 640,
@@ -56,8 +60,8 @@ def generate_launch_description():
             # 'camera': 0,  # or string id from rpicam-hello --list-cameras
         }],
         remappings=[
-            ('image_raw', '/downward_camera/image_raw'),
-            ('camera_info', '/downward_camera/camera_info'),
+            ('image_raw', '/drone/downward_camera/image_raw'),
+            ('camera_info', '/drone/downward_camera/camera_info'),
         ],
     )
 
@@ -69,13 +73,20 @@ def generate_launch_description():
         parameters=[{
             'marker_size': 0.046,
             'target_marker_id': -1,
-            'image_topic': '/downward_camera/image_raw',
-            'camera_info_topic': '/downward_camera/camera_info',
+            'image_topic': '/drone/downward_camera/image_raw',
+            'camera_info_topic': '/drone/downward_camera/camera_info',
             'camera_calibration_file': pacj_calib_yaml,
-            'pose_topic': '/aruco/pose',
-            'debug_image_topic': '/aruco/image_debug',
+            'pose_topic': '/drone/aruco/pose',
+            'debug_image_topic': '/drone/aruco/image_debug',
             'publish_debug_image': True,
         }],
+    )
+
+    drone_status = Node(
+        package='pacj',
+        executable='drone_status',
+        name='drone_status',
+        output='screen',
     )
 
     # Gated: publish_setpoints + Offboard; then publish_velocity / publish_position /
@@ -100,6 +111,7 @@ def generate_launch_description():
 
     return LaunchDescription([
         uxrce_agent,
+        drone_status,
         # offboard_controller,
         downward_camera_node,
         aruco_detector_node,

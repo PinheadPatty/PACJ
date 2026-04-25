@@ -3,12 +3,12 @@
 ArUco marker pose estimation from the downward camera stream.
 
 Subscribes (defaults):
-  /downward_camera/image_raw   (sensor_msgs/Image)
-  /downward_camera/camera_info (sensor_msgs/CameraInfo)
+  /drone/downward_camera/image_raw   (sensor_msgs/Image)
+  /drone/downward_camera/camera_info (sensor_msgs/CameraInfo)
 
 Publishes (defaults):
-  /aruco/pose        (geometry_msgs/PoseStamped) marker pose in the camera optical frame
-  /aruco/image_debug (sensor_msgs/Image)         annotated image (optional)
+  /drone/aruco/pose        (geometry_msgs/PoseStamped) marker pose in the camera optical frame
+  /drone/aruco/image_debug (sensor_msgs/Image)         annotated image (optional)
 
 Default ``camera_calibration_file`` is ``.../pacj/calibration/camera_calibration.yaml``
 (same default as ChArUco capture). If missing or invalid, intrinsics come from
@@ -84,10 +84,10 @@ class ArucoDetectorNode(Node):
         self.declare_parameter("aruco_dict", 0)  # DICT_4X4_50
         self.declare_parameter("target_marker_id", -1)  # -1 = any
         self.declare_parameter("camera_calibration_file", default_camera_calibration_yaml())
-        self.declare_parameter("image_topic", "/downward_camera/image_raw")
-        self.declare_parameter("camera_info_topic", "/downward_camera/camera_info")
-        self.declare_parameter("pose_topic", "/aruco/pose")
-        self.declare_parameter("debug_image_topic", "/aruco/image_debug")
+        self.declare_parameter("image_topic", "/drone/downward_camera/image_raw")
+        self.declare_parameter("camera_info_topic", "/drone/downward_camera/camera_info")
+        self.declare_parameter("pose_topic", "/drone/aruco/pose")
+        self.declare_parameter("debug_image_topic", "/drone/aruco/image_debug")
         self.declare_parameter("publish_debug_image", True)
 
         marker_size = float(self.get_parameter("marker_size").value)

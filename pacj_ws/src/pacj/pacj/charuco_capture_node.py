@@ -65,7 +65,7 @@ class CharucoCaptureNode(Node):
     def __init__(self) -> None:
         super().__init__("charuco_capture")
 
-        self.declare_parameter("image_topic", "/downward_camera/image_raw")
+        self.declare_parameter("image_topic", "/drone/downward_camera/image_raw")
         self.declare_parameter("save_directory", str(package_calibration_dir()))
         self.declare_parameter("file_prefix", "frame_")
         self.declare_parameter("file_extension", "png")  # png or jpg

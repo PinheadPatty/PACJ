@@ -43,25 +43,25 @@ class OffboardController(Node):
 
         self.offboard_control_mode_pub = self.create_publisher(
             OffboardControlMode,
-            '/fmu/in/offboard_control_mode',
+            '/drone/fmu/in/offboard_control_mode',
             qos_profile,
         )
         self.trajectory_setpoint_pub = self.create_publisher(
             TrajectorySetpoint,
-            '/fmu/in/trajectory_setpoint',
+            '/drone/fmu/in/trajectory_setpoint',
             qos_profile,
         )
         self.mode_pub = self.create_publisher(String, '/offboard_controller/mode', 10)
 
         self.create_subscription(
             VehicleAttitude,
-            '/fmu/out/vehicle_attitude',
+            '/drone/fmu/out/vehicle_attitude',
             self.vehicle_attitude_cb,
             qos_profile,
         )
         self.create_subscription(
             VehicleLocalPosition,
-            '/fmu/out/vehicle_local_position',
+            '/drone/fmu/out/vehicle_local_position',
             self.vehicle_local_pos_cb,
             qos_profile,
         )

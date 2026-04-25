@@ -48,6 +48,7 @@ setup(
             'drone_planner = pacj.drone_planner:main',
             'offboard_controller = pacj.offboard_controller:main',
             'aruco_detector = pacj.aruco_detector_node:main',
+            'drone_status = pacj.drone_status_node:main',
             'charuco_capture = pacj.charuco_capture_node:main',
             'charuco_calibrate_from_images = pacj.charuco_calibrate_from_images_node:main',
         ],

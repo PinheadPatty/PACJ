@@ -15,12 +15,12 @@ class ImageDecompressor(Node):
         # Drone Subscriptions & Publishers
         self.drone_color_subscription = self.create_subscription(
             CompressedImage,
-            '/drone/color/image_raw/compressed', 
+            '/drone/camera/color/image_raw/compressed',
             self.drone_color_listener_callback,
             qos_profile=qos_profile_sensor_data)
         self.drone_depth_subscription = self.create_subscription(
             CompressedImage,
-            '/drone/depth/image_raw/compressedDepth', 
+            '/drone/camera/depth/image_raw/compressedDepth',
             self.drone_depth_listener_callback, 
             qos_profile=qos_profile_sensor_data)        
         
