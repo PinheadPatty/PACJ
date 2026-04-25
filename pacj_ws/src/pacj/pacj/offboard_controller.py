@@ -7,22 +7,28 @@ from rclpy.node import Node
 from rclpy.qos import DurabilityPolicy, HistoryPolicy, QoSProfile, ReliabilityPolicy
 
 from geometry_msgs.msg import PoseStamped
+from std_msgs.msg import Bool, String
 from px4_msgs.msg import (
     OffboardControlMode,
     TrajectorySetpoint,
     VehicleAttitude,
     VehicleLocalPosition,
+    VehicleStatus,
 )
 
 
 class OffboardController(Node):
     """Position-only PX4 offboard bridge.
 
-    Always publishes PX4 position setpoints. Baseline is a local-position hold.
-    input_setpoints enables /cmd_pose input: a valid command switches to tracking
-    that pose until within tolerances, then returns to the local hold.
-    When input_setpoints is false, /cmd_pose is ignored and the node stays in local
-    hold (PX4 streaming continues).
+    Always publishes PX4 position setpoints with a local-position hold baseline.
+
+    Tracking policy:
+    - /cmd_pose is ignored unless PX4 is in OFFBOARD and tracking is armed
+      (subscribe to /offboard_controller/tracking_armed, std_msgs/Bool).
+    - Each OFFBOARD edge (enter or exit) clears arming and returns to HOLD_LOCAL
+      so a stale streamed /cmd_pose cannot resume after mode changes.
+    - After arming, /cmd_pose engages TRACK_CMD; disarm returns to HOLD_LOCAL
+      at the current pose.
     """
 
     def __init__(self):
@@ -45,6 +51,7 @@ class OffboardController(Node):
             '/fmu/in/trajectory_setpoint',
             qos_profile,
         )
+        self.mode_pub = self.create_publisher(String, '/offboard_controller/mode', 10)
 
         self.create_subscription(
             VehicleAttitude,
@@ -58,21 +65,30 @@ class OffboardController(Node):
             self.vehicle_local_pos_cb,
             qos_profile,
         )
+        self.create_subscription(
+            VehicleStatus,
+            '/fmu/out/vehicle_status',
+            self.vehicle_status_cb,
+            qos_profile,
+        )
 
         self.create_subscription(PoseStamped, '/cmd_pose', self.cmd_pose_cb, 10)
+        self.create_subscription(Bool, '/offboard_controller/tracking_armed', self.tracking_armed_cb, 10)
 
-        self.input_setpoints = bool(self.declare_parameter('input_setpoints', False).value)
         self.max_position_step_m = float(self.declare_parameter('max_position_step_m', 0.5).value)
         self.max_yaw_step_rad = float(self.declare_parameter('max_yaw_step_rad', 0.35).value)
-        self.position_tolerance_m = float(self.declare_parameter('position_tolerance_m', 0.05).value)
-        self.yaw_tolerance_rad = float(self.declare_parameter('yaw_tolerance_rad', 0.05).value)
-        self.goal_stable_ticks = int(self.declare_parameter('goal_stable_ticks', 5).value)
+        self.cmd_timeout_s = float(self.declare_parameter('cmd_timeout_s', 2.0).value)
 
         self.current_yaw = 0.0
         self.drone_pos = [0.0, 0.0, 0.0]
         self.mode = 'HOLD_LOCAL'
+        self.last_published_mode = None
         self.cmd_target = PoseStamped()
-        self.goal_ok_ticks = 0
+        self.offboard_active = False
+        self.vehicle_status_received = False
+        self.last_cmd_time_s = -1.0
+
+        self.tracking_armed = False
 
         self.current_pose = PoseStamped()
         self.current_pose.pose.position.x = 0.0
@@ -82,7 +98,25 @@ class OffboardController(Node):
 
         self.timer = self.create_timer(0.05, self.timer_cb)  # 20 Hz
 
-        self.get_logger().info('Offboard Controller Initialized (position-only).')
+        self._publish_mode_if_changed()
+        self.get_logger().info(
+            'Offboard controller: hold by default. In OFFBOARD, publish '
+            'true to /offboard_controller/tracking_armed then /cmd_pose to track.'
+        )
+
+    def _publish_mode_if_changed(self):
+        if self.mode == self.last_published_mode:
+            return
+        msg = String()
+        msg.data = self.mode
+        self.mode_pub.publish(msg)
+        self.last_published_mode = self.mode
+
+    def _flush_tracking_on_offboard_edge(self):
+        """Disarm and hold whenever OFFBOARD state enters or exits (stale goal guard)."""
+        self.tracking_armed = False
+        self.mode = 'HOLD_LOCAL'
+        self._latch_current_hold_target()
 
     def _set_current_pose_from_ned(self, x_north, y_east, z_down, yaw_ned):
         self.current_pose.pose.position.x = float(y_east)
@@ -116,13 +150,6 @@ class OffboardController(Node):
             angle_rad += 2.0 * math.pi
         return angle_rad
 
-    def _ros_position_from_ned(self):
-        return (
-            float(self.drone_pos[1]),
-            float(self.drone_pos[0]),
-            float(-self.drone_pos[2]),
-        )
-
     def _ros_yaw_from_ned_yaw(self, yaw_ned):
         return self._wrap_pi(-float(yaw_ned))
 
@@ -136,8 +163,39 @@ class OffboardController(Node):
     def vehicle_local_pos_cb(self, msg):
         self.drone_pos = [msg.x, msg.y, msg.z]
 
+    def vehicle_status_cb(self, msg):
+        was_offboard = self.offboard_active
+        self.offboard_active = (msg.nav_state == VehicleStatus.NAVIGATION_STATE_OFFBOARD)
+        self.vehicle_status_received = True
+
+        if (not was_offboard) and self.offboard_active:
+            self._flush_tracking_on_offboard_edge()
+            self.get_logger().info(
+                'PX4 entered OFFBOARD: disarmed tracking; publish '
+                'true to /offboard_controller/tracking_armed then /cmd_pose to track.'
+            )
+
+        if was_offboard and (not self.offboard_active):
+            had_track = self.mode == 'TRACK_CMD'
+            self._flush_tracking_on_offboard_edge()
+            if had_track:
+                self.get_logger().info('PX4 exited OFFBOARD; returning to HOLD_LOCAL.')
+
+    def tracking_armed_cb(self, msg):
+        was_armed = self.tracking_armed
+        self.tracking_armed = bool(msg.data)
+        if self.tracking_armed and (not was_armed):
+            self.get_logger().info('Tracking armed; publish /cmd_pose (while OFFBOARD) to engage TRACK_CMD.')
+        if (not self.tracking_armed) and was_armed:
+            if self.mode == 'TRACK_CMD':
+                self.mode = 'HOLD_LOCAL'
+                self._latch_current_hold_target()
+                self.get_logger().info('Tracking disarmed; HOLD_LOCAL.')
+
     def cmd_pose_cb(self, msg):
-        if not self.input_setpoints:
+        if not self.offboard_active:
+            return
+        if not self.tracking_armed:
             return
 
         anchor_x = float(self.drone_pos[1])
@@ -187,41 +245,30 @@ class OffboardController(Node):
 
         self.cmd_target = msg
         self.mode = 'TRACK_CMD'
-        self.goal_ok_ticks = 0
+        self.last_cmd_time_s = float(self.get_clock().now().nanoseconds) * 1e-9
 
     def timer_cb(self):
-        if not self.input_setpoints and self.mode == 'TRACK_CMD':
+        if self.mode == 'TRACK_CMD' and (not self.tracking_armed):
             self.mode = 'HOLD_LOCAL'
-            self.goal_ok_ticks = 0
-
-        if self.mode == 'HOLD_LOCAL' or not self.input_setpoints:
             self._latch_current_hold_target()
-        else:
-            self.current_pose = self.cmd_target
-            px, py, pz = self._ros_position_from_ned()
-            tx = float(self.cmd_target.pose.position.x)
-            ty = float(self.cmd_target.pose.position.y)
-            tz = float(self.cmd_target.pose.position.z)
-            pos_err = math.sqrt((px - tx) ** 2 + (py - ty) ** 2 + (pz - tz) ** 2)
 
-            tgt_yaw = self._yaw_from_orientation(
-                float(self.cmd_target.pose.orientation.x),
-                float(self.cmd_target.pose.orientation.y),
-                float(self.cmd_target.pose.orientation.z),
-                float(self.cmd_target.pose.orientation.w),
-            )
-            yaw_err = abs(self._wrap_pi(self._ros_yaw_from_ned_yaw(self.current_yaw) - tgt_yaw))
-
-            if pos_err <= self.position_tolerance_m and yaw_err <= self.yaw_tolerance_rad:
-                self.goal_ok_ticks += 1
-            else:
-                self.goal_ok_ticks = 0
-
-            if self.goal_ok_ticks >= self.goal_stable_ticks:
+        if self.mode == 'TRACK_CMD' and self.cmd_timeout_s > 0.0 and self.last_cmd_time_s > 0.0:
+            now_s = float(self.get_clock().now().nanoseconds) * 1e-9
+            if (now_s - self.last_cmd_time_s) > self.cmd_timeout_s:
                 self.mode = 'HOLD_LOCAL'
-                self.goal_ok_ticks = 0
                 self._latch_current_hold_target()
+                self.get_logger().warn('No /cmd_pose update within cmd_timeout_s; returning to HOLD_LOCAL.')
 
+        if self.mode == 'TRACK_CMD' and self.vehicle_status_received and (not self.offboard_active):
+            self.mode = 'HOLD_LOCAL'
+            self._latch_current_hold_target()
+
+        if self.mode == 'TRACK_CMD' and self.offboard_active and self.tracking_armed:
+            self.current_pose = self.cmd_target
+        else:
+            self._latch_current_hold_target()
+
+        self._publish_mode_if_changed()
         self.publish_offboard_control_mode()
         self.publish_trajectory_setpoint()
 
