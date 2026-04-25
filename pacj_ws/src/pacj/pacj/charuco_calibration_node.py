@@ -89,19 +89,22 @@ class CharucoCalibrationNode(Node):
         self.create_service(Trigger, "capture", self._srv_capture)
         self.create_service(Trigger, "calibrate", self._srv_calibrate)
 
+        mode_msg = (
+            "  [c] capture  [s] calibrate & save YAML  [q] quit"
+            if not self._headless
+            else (
+                "  headless=True (no OpenCV window)\n"
+                "  services:\n"
+                "    ros2 service call /charuco_calibration/capture std_srvs/srv/Trigger {}\n"
+                "    ros2 service call /charuco_calibration/calibrate std_srvs/srv/Trigger {}"
+            )
+        )
         self.get_logger().info(
             f"ChArUco calibration ({sx}×{sy} squares, {square_length * 1000:.0f} mm square, "
             f"{marker_length * 1000:.0f} mm markers, dict_id={dict_id})\n"
             f"  image_topic={image_topic}\n"
             f"  output_path={self._output_path}\n"
-            (
-                "  [c] capture  [s] calibrate & save YAML  [q] quit"
-                if not self._headless
-                else "  headless=True (no OpenCV window)\n"
-                     "  services:\n"
-                     "    ros2 service call /charuco_calibration/capture std_srvs/srv/Trigger {}\n"
-                     "    ros2 service call /charuco_calibration/calibrate std_srvs/srv/Trigger {}"
-            )
+            + mode_msg
         )
 
     def _image_cb(self, msg: Image) -> None:
