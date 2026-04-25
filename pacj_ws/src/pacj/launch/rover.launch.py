@@ -26,16 +26,14 @@ def generate_launch_description():
             'depth_registration': 'true',
             'enable_color': 'true',
             'enable_depth': 'true',
-            # --- New "Lower CPU" Settings ---
             'color_width': '424',
             'color_height': '240',
             'color_fps': '6',
             'depth_width': '480',
             'depth_height': '270',
             'depth_fps': '6',
-            'color_format': 'MJPEG',          # High compression to save USB bandwidth
-            'enable_point_cloud': 'false',    # Let RTAB-Map handle the 3D math instead
-            # --------------------------------
+            'color_format': 'MJPEG',
+            'enable_point_cloud': 'false',
         }.items()
     )
 

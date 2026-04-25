@@ -119,6 +119,18 @@ def generate_launch_description():
         output='screen'
     )
 
+    # --- FOXGLOVE SERVER ---
+    foxglove_bridge = Node(
+        package='foxglove_bridge',
+        executable='foxglove_bridge',
+        name='foxglove_bridge',
+        output='screen',
+        parameters=[{
+            'port': 8765,
+            'address': '0.0.0.0',
+        }],
+    )    
+
     return LaunchDescription([
         # interactive_setpoint,
         # drone_planner,
