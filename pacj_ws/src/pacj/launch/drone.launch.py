@@ -41,9 +41,9 @@ def generate_launch_description():
         }.items()
     )
 
-    camera_node = Node(
+    downward_camera_node = Node(
         package='camera_ros',
-        executable='camera_node',
+        executable='downward_camera_node',
         name='downward_camera',
         output='screen',
         parameters=[{
@@ -56,6 +56,22 @@ def generate_launch_description():
             ('image_raw', '/downward_camera/image_raw'),
             ('camera_info', '/downward_camera/camera_info'),
         ],
+    )
+
+    aruco_detector_node = Node(
+        package='pacj',
+        executable='aruco_detector',
+        name='aruco_detector',
+        output='screen',
+        parameters=[{
+            'marker_size': 0.046,
+            'target_marker_id': -1,
+            'image_topic': '/downward_camera/image_raw',
+            'camera_info_topic': '/downward_camera/camera_info',
+            'pose_topic': '/aruco/pose',
+            'debug_image_topic': '/aruco/image_debug',
+            'publish_debug_image': True,
+        }],
     )
 
     # Gated: publish_setpoints + Offboard; then publish_velocity / publish_position /
@@ -81,7 +97,8 @@ def generate_launch_description():
     return LaunchDescription([
         uxrce_agent,
         # offboard_controller,
-        camera_node,
+        downward_camera_node,
+        aruco_detector_node,
         # (5s Delay)
         TimerAction(
             period=5.0,
