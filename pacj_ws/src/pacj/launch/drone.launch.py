@@ -30,9 +30,9 @@ def generate_launch_description():
         }.items()
     )
 
-    camera_node = Node(
+    downward_camera_node = Node(
         package='camera_ros',
-        executable='camera_node',
+        executable='downward_camera_node',
         name='downward_camera',
         output='screen',
         parameters=[{
@@ -69,7 +69,7 @@ def generate_launch_description():
 
     return LaunchDescription([
         # offboard_controller,
-        camera_node,
+        downward_camera_node,
         # (5s Delay)
         TimerAction(
             period=5.0,
