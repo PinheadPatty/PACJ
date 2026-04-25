@@ -36,6 +36,7 @@ setup(
             'drone_planner = pacj.drone_planner:main',
             'offboard_controller = pacj.offboard_controller:main',
             'aruco_detector = pacj.aruco_detector_node:main',
+            'charuco_calibration = pacj.charuco_calibration_node:main',
         ],
     },
 )
