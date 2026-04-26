@@ -7,3 +7,5 @@ services:
     restart: unless-stopped
     environment:
       - ROS_DOMAIN_ID=67
+      - ROS_LOCALHOST_ONLY=0
+      - RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
