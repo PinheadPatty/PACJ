@@ -1,6 +1,7 @@
 FROM ros:jazzy
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
+    ros-jazzy-rmw-cyclonedds-cpp \
     ros-jazzy-rtabmap-ros \
     ros-jazzy-foxglove-bridge \
     ros-jazzy-image-transport-plugins \
