@@ -22,7 +22,11 @@ from geometry_msgs.msg import PoseStamped, Vector3
 from sensor_msgs.msg import CameraInfo, Image, CompressedImage
 
 def default_camera_calibration_yaml():
-    return os.path.expanduser("~/PACJ/pacj_ws/src/pacj/calibration/camera_calibration.yaml")
+    try:
+        base_path = os.path.join(get_package_share_directory('pacj'), 'calibration')
+        return os.path.join(base_path, filename)
+    except Exception:
+        return ""
 
 def _load_calibration_yaml(path: str) -> Tuple[Optional[np.ndarray], Optional[np.ndarray]]:
     try:

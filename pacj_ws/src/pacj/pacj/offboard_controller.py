@@ -182,10 +182,18 @@ class OffboardController(Node):
                 self.get_logger().info('PX4 exited OFFBOARD; returning to HOLD_LOCAL.')
 
     def tracking_armed_cb(self, msg):
+        # Only allow arming if we are actually in Offboard mode
+        if msg.data and not self.offboard_active:
+            self.get_logger().warn('Rejecting tracking arm request: Not in OFFBOARD mode.')
+            self.tracking_armed = False
+            return
+
         was_armed = self.tracking_armed
         self.tracking_armed = bool(msg.data)
+        
         if self.tracking_armed and (not was_armed):
-            self.get_logger().info('Tracking armed; publish /cmd_pose (while OFFBOARD) to engage TRACK_CMD.')
+            self.get_logger().info('Tracking armed; publish /cmd_pose to engage TRACK_CMD.')
+            
         if (not self.tracking_armed) and was_armed:
             if self.mode == 'TRACK_CMD':
                 self.mode = 'HOLD_LOCAL'
