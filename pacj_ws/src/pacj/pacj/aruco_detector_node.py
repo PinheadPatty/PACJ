@@ -2,7 +2,10 @@
 """
 ArUco marker pose estimation - Drone-Relative Version.
 Converts Camera coordinates to Drone Body coordinates:
-  X = Forward, Y = Left, Z = Distance (Altitude).
+  pose.position.x = Forward, y = Left, z = Distance (range along optical axis).
+
+pose.orientation is yaw error (rad) about camera +Z from solvePnP rotation, as quaternion (x=y=0).
+frame_id is semantic only: aruco_relative_body.
 """
 
 import math
@@ -18,15 +21,20 @@ from rclpy.node import Node
 from rclpy.qos import HistoryPolicy, QoSProfile, ReliabilityPolicy
 
 from cv_bridge import CvBridge
-from geometry_msgs.msg import PoseStamped, Vector3
+from geometry_msgs.msg import PoseStamped, Quaternion
 from sensor_msgs.msg import CameraInfo, Image, CompressedImage
 
-def default_camera_calibration_yaml():
+
+def default_camera_calibration_yaml() -> str:
+    """Default share path for bundled calibration (may be overridden by camera_info)."""
     try:
-        base_path = os.path.join(get_package_share_directory('pacj'), 'calibration')
-        return os.path.join(base_path, filename)
+        from ament_index_python.packages import get_package_share_directory
+
+        return os.path.join(
+            get_package_share_directory('pacj'), 'calibration', 'camera_calibration.yaml'
+        )
     except Exception:
-        return ""
+        return ''
 
 def _load_calibration_yaml(path: str) -> Tuple[Optional[np.ndarray], Optional[np.ndarray]]:
     try:
@@ -82,8 +90,8 @@ class ArucoDetectorNode(Node):
         # --- Publishers & Subscribers ---
         sensor_qos = QoSProfile(reliability=ReliabilityPolicy.BEST_EFFORT, history=HistoryPolicy.KEEP_LAST, depth=1)
         
-        # Main output: Relative X, Y, Z
-        self._rel_pub = self.create_publisher(Vector3, self.get_parameter("relative_pose_topic").value, 10)
+        # Main output: relative error pose (position + yaw about camera/view +Z); see module docstring.
+        self._rel_pub = self.create_publisher(PoseStamped, self.get_parameter("relative_pose_topic").value, 10)
         
         # Debug streams
         self._debug_pub = self.create_publisher(Image, "/drone/aruco/image_debug", 1)
@@ -132,13 +140,23 @@ class ArucoDetectorNode(Node):
                     left = -float(tvec[0])  # Camera X -> Drone Left
                     dist = float(tvec[2])   # Camera Z -> Distance
 
-                    # Publish Relative Position
-                    rel_msg = Vector3(x=fwd, y=left, z=dist)
+                    R, _ = cv2.Rodrigues(np.asarray(rvec, dtype=np.float64).reshape(3, 1))
+                    yaw = math.atan2(float(R[1, 0]), float(R[0, 0]))
+                    hy = yaw * 0.5
+                    q = Quaternion(x=0.0, y=0.0, z=math.sin(hy), w=math.cos(hy))
+
+                    rel_msg = PoseStamped()
+                    rel_msg.header = msg.header
+                    rel_msg.header.frame_id = 'aruco_relative_body'
+                    rel_msg.pose.position.x = fwd
+                    rel_msg.pose.position.y = left
+                    rel_msg.pose.position.z = dist
+                    rel_msg.pose.orientation = q
                     self._rel_pub.publish(rel_msg)
 
                     self.get_logger().info(
-                        f"ID {marker_id} -> FWD: {fwd:.2f}m, LFT: {left:.2f}m, DIST: {dist:.2f}m", 
-                        throttle_duration_sec=0.5
+                        f"ID {marker_id} -> FWD: {fwd:.2f}m, LFT: {left:.2f}m, DIST: {dist:.2f}m, YAW: {yaw:.2f}rad",
+                        throttle_duration_sec=0.5,
                     )
 
         self._publish_debug(annotated, msg.header)

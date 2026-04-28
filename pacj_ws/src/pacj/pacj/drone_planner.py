@@ -38,6 +38,13 @@ def _shortest_yaw_delta(a: float, b: float) -> float:
     return d
 
 
+def _dist3(a: PoseStamped, b: PoseStamped) -> float:
+    dx = a.pose.position.x - b.pose.position.x
+    dy = a.pose.position.y - b.pose.position.y
+    dz = a.pose.position.z - b.pose.position.z
+    return math.sqrt(dx * dx + dy * dy + dz * dz)
+
+
 class DronePlanner(Node):
     def __init__(self):
         super().__init__('drone_planner')
@@ -49,11 +56,16 @@ class DronePlanner(Node):
         self.waypoint_accept_radius_m = float(
             self.declare_parameter('waypoint_accept_radius_m', 0.22).value
         )
-        self.execution_period_s = float(self.declare_parameter('execution_period_s', 0.12).value)
+        self.execution_period_s = float(self.declare_parameter('execution_period_s', 0.05).value)
         self.occupancy_threshold = int(self.declare_parameter('occupancy_threshold', 50).value)
         self.reject_unknown_cells = bool(self.declare_parameter('reject_unknown_cells', False).value)
         self.astar_max_expansions = int(self.declare_parameter('astar_max_expansions', 500_000).value)
         self.snap_to_free_radius_cells = int(self.declare_parameter('snap_to_free_radius_cells', 40).value)
+
+        # Maximum distance ahead of the drone's current position that a /cmd_pose
+        # target may be placed. This is the only velocity-limiting mechanism; the
+        # offboard controller applies no clamping of its own.
+        self.lookahead_distance_m = float(self.declare_parameter('lookahead_distance_m', 0.5).value)
 
         self.cmd_pub = self.create_publisher(PoseStamped, '/cmd_pose', 10)
         self.path_pub = self.create_publisher(Path, '/planned_path', 10)
@@ -76,8 +88,13 @@ class DronePlanner(Node):
         self.get_logger().info(
             f"Drone planner: map={self.map_frame} base={self.base_frame} "
             f"spacing={self.waypoint_spacing_m}m accept={self.waypoint_accept_radius_m}m "
+            f"lookahead={self.lookahead_distance_m}m "
             f"(2D A* when occupancy grid is present)"
         )
+
+    def _clear_plan(self):
+        self._waypoints = []
+        self._wp_index = 0
 
     def _grid_cb(self, msg: OccupancyGrid):
         self._grid = msg
@@ -455,12 +472,6 @@ class DronePlanner(Node):
             f"track length {self._track_length(poses):.2f} m"
         )
 
-        prime = PoseStamped()
-        prime.header.stamp = self.get_clock().now().to_msg()
-        prime.header.frame_id = self.map_frame
-        prime.pose = poses[0].pose
-        self.cmd_pub.publish(prime)
-
     @staticmethod
     def _track_length(poses):
         if len(poses) < 2:
@@ -472,41 +483,79 @@ class DronePlanner(Node):
             s += math.sqrt((b.x - a.x) ** 2 + (b.y - a.y) ** 2 + (b.z - a.z) ** 2)
         return s
 
+    def _advance_waypoint_index(self, cur: PoseStamped):
+        """Pure-pursuit advancement: greedily skip waypoints the drone has already passed.
+
+        A waypoint is considered passed when the *next* waypoint is strictly
+        closer than the current one, meaning the drone is geometrically past the
+        current target. This produces smooth continuous tracking without waiting
+        at each point.
+        """
+        while self._wp_index < len(self._waypoints) - 1:
+            cur_tgt = self._waypoints[self._wp_index]
+            nxt_tgt = self._waypoints[self._wp_index + 1]
+            dist_cur = _dist3(cur, cur_tgt)
+            dist_nxt = _dist3(cur, nxt_tgt)
+            if dist_nxt < dist_cur:
+                self._wp_index += 1
+            else:
+                break
+
+    def _clamp_lookahead(self, cur: PoseStamped, tgt: PoseStamped) -> PoseStamped:
+        """If tgt is farther than lookahead_distance_m from cur, clamp it along the line."""
+        cx = cur.pose.position.x
+        cy = cur.pose.position.y
+        cz = cur.pose.position.z
+        tx = tgt.pose.position.x
+        ty = tgt.pose.position.y
+        tz = tgt.pose.position.z
+        dx = tx - cx
+        dy = ty - cy
+        dz = tz - cz
+        dist = math.sqrt(dx * dx + dy * dy + dz * dz)
+        if dist <= self.lookahead_distance_m or dist < 1e-6:
+            return tgt
+
+        scale = self.lookahead_distance_m / dist
+        clamped = PoseStamped()
+        clamped.header = tgt.header
+        clamped.pose.position.x = cx + dx * scale
+        clamped.pose.position.y = cy + dy * scale
+        clamped.pose.position.z = cz + dz * scale
+        clamped.pose.orientation = tgt.pose.orientation
+        return clamped
+
     def _execution_timer_cb(self):
+        """Stream /cmd_pose every tick while a goal is active.
+
+        On transient TF outages this callback skips publishing for that tick.
+        With persistent outages, offboard_controller's cmd_timeout_s watchdog
+        should return control to HOLD_LOCAL.
+        """
         if not self._waypoints:
-            return
-        if self._wp_index >= len(self._waypoints):
-            self._waypoints = []
-            self._wp_index = 0
-            self.get_logger().info("Waypoint execution finished.")
             return
 
         cur = self._get_pose_map_from_tf()
         if cur is None:
+            # TF unavailable; do not publish this tick (timeout will catch a
+            # persistent failure, but transient TF gaps should not trigger it).
             return
 
+        # Advance index using pure-pursuit logic.
+        self._advance_waypoint_index(cur)
+
+        # Check if we have reached the final waypoint.
         tgt = self._waypoints[self._wp_index]
-        tx = tgt.pose.position.x
-        ty = tgt.pose.position.y
-        tz = tgt.pose.position.z
-        cx = cur.pose.position.x
-        cy = cur.pose.position.y
-        cz = cur.pose.position.z
-        err = math.sqrt((tx - cx) ** 2 + (ty - cy) ** 2 + (tz - cz) ** 2)
-
-        if err < self.waypoint_accept_radius_m:
-            self._wp_index += 1
-            if self._wp_index >= len(self._waypoints):
-                self._waypoints = []
-                self._wp_index = 0
-                self.get_logger().info("Waypoint execution finished.")
+        is_last = (self._wp_index == len(self._waypoints) - 1)
+        if is_last and _dist3(cur, tgt) < self.waypoint_accept_radius_m:
+            self.get_logger().info("Waypoint execution finished.")
+            self._clear_plan()
             return
 
-        out = PoseStamped()
-        out.header.stamp = self.get_clock().now().to_msg()
-        out.header.frame_id = self.map_frame
-        out.pose = tgt.pose
-        self.cmd_pub.publish(out)
+        # Clamp the lookahead distance and publish every tick.
+        cmd = self._clamp_lookahead(cur, tgt)
+        cmd.header.stamp = self.get_clock().now().to_msg()
+        self.cmd_pub.publish(cmd)
 
 
 def main(args=None):
