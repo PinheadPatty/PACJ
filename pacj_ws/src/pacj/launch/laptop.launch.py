@@ -12,9 +12,9 @@ def generate_launch_description():
     drone_slam = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(rtabmap_launch_path),
         launch_arguments={
-            'rgb_topic': '/drone/camera/color/image_raw',
-            'depth_topic': '/drone/camera/depth/image_raw',
-            'camera_info_topic': '/drone/camera/color/camera_info',
+            'rgb_topic': '/drone/color/image_raw',
+            'depth_topic': '/drone/depth/image_raw',
+            'camera_info_topic': '/drone/color/camera_info',
             'namespace': 'drone',
             'frame_id': 'drone_link',
             'odom_frame_id': 'drone/odom',
