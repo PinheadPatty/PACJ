@@ -1,7 +1,7 @@
 from launch import LaunchDescription
-from launch.actions import IncludeLaunchDescription, TimerAction, ExecuteProcess, GroupAction
+from launch.actions import IncludeLaunchDescription, TimerAction, ExecuteProcess
 from launch.launch_description_sources import PythonLaunchDescriptionSource
-from launch_ros.actions import Node, PushRosNamespace
+from launch_ros.actions import Node
 import os
 from ament_index_python.packages import get_package_share_directory
 
@@ -22,30 +22,27 @@ def generate_launch_description():
         output='screen',
     )
     
-    drone_camera = GroupAction([
-        PushRosNamespace('drone'),
-        IncludeLaunchDescription(
-            PythonLaunchDescriptionSource(orbbec_launch_path),
-            launch_arguments={
-                'camera_name': 'camera',
-                'enable_sync': 'false',
-                'depth_registration': 'false',
-                'enable_color': 'true',
-                'enable_depth': 'true',
-                'color_width': '424',
-                'color_height': '240',
-                'color_fps': '6',
-                'depth_width': '480',
-                'depth_height': '270',
-                'depth_fps': '6',
-                'color_format': 'MJPEG',
-                'enable_point_cloud': 'false',
-                'enable_laser': 'false',
-                'laser_energy_level': '-1',
-                'connection_delay': '500',
-            }.items()
-        ),
-    ])
+    drone_camera = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource(orbbec_launch_path),
+        launch_arguments={
+            'camera_name': 'drone',
+            'enable_sync': 'false',
+            'depth_registration': 'false',
+            'enable_color': 'true',
+            'enable_depth': 'true',
+            'color_width': '424',
+            'color_height': '240',
+            'color_fps': '6',
+            'depth_width': '480',
+            'depth_height': '270',
+            'depth_fps': '6',
+            'color_format': 'MJPEG',
+            'enable_point_cloud': 'false',
+            'enable_laser': 'false',
+            'laser_energy_level': '-1',
+            'connection_delay': '500',
+        }.items()
+    )
 
     downward_camera_node = Node(
         package='camera_ros',
