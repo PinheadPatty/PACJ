@@ -47,6 +47,7 @@ setup(
             'drone_status = pacj.drone_status_node:main',
             'charuco_capture = pacj.charuco_capture_node:main',
             'charuco_calibrate_from_images = pacj.charuco_calibrate_from_images_node:main',
+            'decompress = pacj.decompress:main',
         ],
     },
 )
