@@ -29,6 +29,7 @@ class RoverDriver(Node):
         self.POS_CLOSED   = None
         self.COUPLE_SPEED = 30      # Set once at startup (Steady crawl)
         self.SAFE_PWM     = 250     # Power cap to protect gears
+        self.COUPLE_TOLERANCE = 30
         
         # --- 2. CONTROL TABLE ADDRESSES ---
         self.ADDR_OPERATING_MODE  = 11
@@ -61,6 +62,8 @@ class RoverDriver(Node):
         # --- 4. ROS INTERFACES ---
         self.cmd_sub = self.create_subscription(Twist, 'cmd_vel', self.cmd_vel_callback, 10)
         self.cpl_sub = self.create_subscription(String, 'coupling', self.coupling_callback, 10)
+        self.cpl_status_pub = self.create_publisher(String, 'coupling_status', 10)
+        self.create_timer(1.0, self.publish_coupler_status)
         self.get_logger().info("--- Rover Driver Online ---")
         self.get_logger().info(
             "Coupler commands on /coupling: '0' (open), '1' (close), "
@@ -199,6 +202,25 @@ class RoverDriver(Node):
 
         self.get_logger().info("Calibration window ended. Send motion command to re-enable torque.")
 
+    def get_coupler_status(self):
+        position = self.read_coupler_position()
+        if position is None or self.POS_OPEN is None or self.POS_CLOSED is None:
+            return "unknown"
+
+        if abs(position - self.POS_OPEN) <= self.COUPLE_TOLERANCE:
+            return "uncoupled"
+        if abs(position - self.POS_CLOSED) <= self.COUPLE_TOLERANCE:
+            return "coupled"
+        return "moving"
+
+    def publish_coupler_status(self):
+        if self.cpl_status_pub.get_subscription_count() == 0:
+            return
+        status = self.get_coupler_status()
+        msg = String()
+        msg.data = status
+        self.cpl_status_pub.publish(msg)
+
     def get_4byte_param(self, value):
         val = int(value)
         return [DXL_LOBYTE(DXL_LOWORD(val)), DXL_HIBYTE(DXL_LOWORD(val)), 
@@ -254,6 +276,7 @@ class RoverDriver(Node):
             return
 
         self.move_coupler(target_pos, normalized)
+        self.publish_coupler_status()
    
 def main():
     rclpy.init()
