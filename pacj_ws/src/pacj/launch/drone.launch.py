@@ -51,10 +51,9 @@ def generate_launch_description():
         namespace='drone',
         output='screen',
         parameters=[{
-            'width': 640,
-            'height': 480,
+            'width': 800,
+            'height': 600,
             'frame_id': 'downward_camera_optical_frame',
-            # 'camera': 0,  # or string id from rpicam-hello --list-cameras
         }],
         remappings=[
             ('image_raw', '/drone/downward_camera/image_raw'),
