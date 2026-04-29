@@ -12,9 +12,9 @@ def generate_launch_description():
     drone_slam = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(rtabmap_launch_path),
         launch_arguments={
-            'rgb_topic': '/drone/color/image_raw',
-            'depth_topic': '/drone/depth/image_raw',
-            'camera_info_topic': '/drone/color/camera_info',
+            'rgb_topic': 'color/image_raw',
+            'depth_topic': 'depth/image_raw',
+            'camera_info_topic': 'color/camera_info',
             'namespace': 'drone',
             'frame_id': 'drone_link',
             'odom_frame_id': 'drone/odom',
@@ -36,9 +36,9 @@ def generate_launch_description():
     rover_slam = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(rtabmap_launch_path),
         launch_arguments={
-            'rgb_topic': '/rover/color/image_raw',
-            'depth_topic': '/rover/depth/image_raw',
-            'camera_info_topic': '/rover/color/camera_info',
+            'rgb_topic': 'color/image_raw',
+            'depth_topic': 'depth/image_raw',
+            'camera_info_topic': 'color/camera_info',
             'namespace': 'rover',
             'frame_id': 'rover_link',
             'odom_frame_id': 'rover/odom',
