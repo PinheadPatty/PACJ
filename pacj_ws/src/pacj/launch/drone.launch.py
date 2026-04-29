@@ -1,5 +1,5 @@
 from launch import LaunchDescription
-from launch.actions import IncludeLaunchDescription, TimerAction, ExecuteProcess
+from launch.actions import IncludeLaunchDescription, ExecuteProcess
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch_ros.actions import Node
 import os
@@ -111,9 +111,5 @@ def generate_launch_description():
         offboard_controller,
         downward_camera_node,
         aruco_detector_node,
-        # (5s Delay)
-        TimerAction(
-            period=5.0,
-            actions=[drone_camera]
-        ),
+        drone_camera,
     ])

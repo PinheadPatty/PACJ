@@ -52,20 +52,19 @@ class RoverDriver(Node):
             return
 
         self.setup_hardware()
+        self.capture_coupler_open()
+        if self.POS_OPEN is None:
+            self.get_logger().warn(
+                "Coupler open position not initialized. Restart with coupler open."
+            )
 
         # --- 4. ROS INTERFACES ---
         self.cmd_sub = self.create_subscription(Twist, 'cmd_vel', self.cmd_vel_callback, 10)
         self.cpl_sub = self.create_subscription(String, 'coupling', self.coupling_callback, 10)
-        self.batt_pub = self.create_publisher(String, 'battery_status', 10)
-        
-        # Smart Battery Timer (Polls only if someone is watching)
-        self.create_timer(2.0, self.battery_monitor_callback)
-
         self.get_logger().info("--- Rover Driver Online ---")
         self.get_logger().info(
             "Coupler commands on /coupling: '0' (open), '1' (close), "
-            "'open', 'close', any value in [0,1], 'relax', "
-            "'set_open', 'status'"
+            "'open', 'close', any value in [0,1], 'relax', 'status'"
         )
         self.get_logger().info(
             f"Current coupler endpoints: open={self.POS_OPEN}, "
@@ -136,8 +135,7 @@ class RoverDriver(Node):
     def get_target_position_from_command(self, command):
         if self.POS_OPEN is None or self.POS_CLOSED is None:
             self.get_logger().error(
-                "Coupler is not calibrated! You must set the open position first "
-                "by sending 'set_open' or using 'relax' then 'set_open'."
+                "Coupler position not initialized. Restart with coupler open."
             )
             return None, None
 
@@ -189,8 +187,8 @@ class RoverDriver(Node):
     def relax_coupler_for_calibration(self, duration_sec=30):
         self.set_torque(False)
         self.get_logger().info(
-            "Calibration mode: torque OFF for 30s. Move coupler by hand, then send "
-            "'set_open'."
+            "Calibration mode: torque OFF for 30s. Move coupler by hand, then restart "
+            "rover_driver with coupler open."
         )
 
         for i in range(duration_sec):
@@ -216,16 +214,13 @@ class RoverDriver(Node):
             self.groupSyncWrite.addParam(2, self.get_4byte_param(-right))
             self.groupSyncWrite.txPacket()
 
-    # Step 1: TO RELAX: 
+    # TO RELAX:
     # ros2 topic pub --once /coupling std_msgs/String "data: 'relax'"
 
-    # Step 2: CAPTURE OPEN by hand:
-    # ros2 topic pub --once /coupling std_msgs/String "data: 'set_open'"
-
-    # Step 3: TO OPEN:  
+    # TO OPEN:
     # ros2 topic pub --once /coupling std_msgs/String "data: '0'"
 
-    # Step 4: TO CLOSE: 
+    # TO CLOSE:
     # ros2 topic pub --once /coupling std_msgs/String "data: '1'"
     
     
@@ -234,10 +229,6 @@ class RoverDriver(Node):
 
         if command == 'relax':
             self.relax_coupler_for_calibration()
-            return
-
-        if command == 'set_open':
-            self.capture_coupler_open()
             return
 
         if command == 'set_close':
@@ -264,18 +255,6 @@ class RoverDriver(Node):
 
         self.move_coupler(target_pos, normalized)
    
-    # TO CHECK: ros2 topic echo /battery_status --once
-    def battery_monitor_callback(self):
-        if self.batt_pub.get_subscription_count() > 0:
-            with self.comm_lock:
-                volt_raw, res, err = self.packet_handler.read2ByteTxRx(self.port_handler, 1, self.ADDR_PRESENT_VOLTAGE)
-            if res == COMM_SUCCESS and err == 0:
-                v = volt_raw / 10.0
-                pct = max(0.0, min(100.0, ((v - 9.6) / (12.6 - 9.6)) * 100))
-                msg = String()
-                msg.data = f"Battery: {v:.1f}V ({pct:.0f}%)"
-                self.batt_pub.publish(msg)
-
 def main():
     rclpy.init()
     node = RoverDriver()

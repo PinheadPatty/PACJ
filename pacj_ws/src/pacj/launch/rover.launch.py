@@ -1,5 +1,5 @@
 from launch import LaunchDescription
-from launch.actions import IncludeLaunchDescription, TimerAction
+from launch.actions import IncludeLaunchDescription
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch_ros.actions import Node
 import os
@@ -12,6 +12,13 @@ def generate_launch_description():
         package='pacj',
         executable='rover_driver',
         name='rover_driver',
+        output='screen'
+    )
+
+    rover_battery_node = Node(
+        package='pacj',
+        executable='battery',
+        name='battery_monitor',
         output='screen'
     )
 
@@ -39,9 +46,6 @@ def generate_launch_description():
 
     return LaunchDescription([
         rover_driver_node,
-        # (5s Delay)
-        TimerAction(
-            period=5.0,
-            actions=[rover_camera_node]
-        ),
+        rover_battery_node,
+        rover_camera_node,
     ])

@@ -48,7 +48,7 @@ def generate_launch_description():
                 'camera_info_topic': '/rover/color/camera_info',
                 'namespace': 'rover',
                 'frame_id': 'rover_link',
-                'odom_frame_id': 'rover/odom',
+                'odom_frame_id': 'rover_link',
                 'map_frame_id': 'rover/map',
                 'approx_sync': 'true',
                 'approx_sync_max_interval': '0.2',
