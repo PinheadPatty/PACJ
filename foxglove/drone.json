@@ -117,16 +117,20 @@
       },
       "foxglovePanelTitle": "Drone Downwards Camera"
     },
+    "RawMessages!375ab9o": {
+      "defaultExpanded": false,
+      "topicPath": "/drone/aruco/relative_pose.pose"
+    },
     "3D!1qilldp": {
       "cameraState": {
         "perspective": true,
-        "distance": 15.475618749988667,
-        "phi": 73.1902449324442,
-        "thetaOffset": 65.51668074327131,
+        "distance": 28.639455621026276,
+        "phi": 63.64674831082309,
+        "thetaOffset": 49.08445945948856,
         "targetOffset": [
-          1.7120445313719717,
-          0.41168971189280695,
-          2.454247370827893e-16
+          1.4518454485010424,
+          0.7071860915356755,
+          2.482474079996176e-16
         ],
         "target": [
           0,
@@ -143,7 +147,7 @@
         "near": 0.5,
         "far": 5000
       },
-      "followMode": "follow-pose",
+      "followMode": "follow-none",
       "scene": {},
       "transforms": {},
       "topics": {
@@ -168,13 +172,13 @@
           "visible": true
         },
         "/drone/cloud_map": {
-          "visible": true
+          "visible": false
         },
         "/drone/cloud_ground": {
-          "visible": true
+          "visible": false
         },
         "/drone/cloud_obstacles": {
-          "visible": true
+          "visible": false
         },
         "/drone/octomap_occupied_space": {
           "visible": true
@@ -199,6 +203,48 @@
         },
         "/drone/map": {
           "visible": true
+        },
+        "/drone/aruco/relative_pose": {
+          "visible": false
+        },
+        "/drone/aruco/image_debug/compressed": {
+          "visible": false
+        },
+        "/drone/aruco/image_debug": {
+          "visible": false
+        },
+        "/drone/cmd_pose": {
+          "visible": false
+        },
+        "/drone/color/camera_info": {
+          "visible": false
+        },
+        "/drone/color/image_raw": {
+          "visible": false,
+          "frameLocked": true,
+          "cameraInfoTopic": "/drone/color/camera_info",
+          "distance": 1,
+          "planarProjectionFactor": 0,
+          "renderMode": "default",
+          "projectionFrameId": "odom",
+          "color": "#ffffff",
+          "rectifyImage": true,
+          "pointSize": 1.5
+        },
+        "/drone/color/image_raw/compressed": {
+          "visible": false
+        },
+        "/drone/decompressed_color": {
+          "visible": false,
+          "frameLocked": true,
+          "cameraInfoTopic": "/drone/color/camera_info",
+          "distance": 1,
+          "planarProjectionFactor": 0,
+          "renderMode": "default",
+          "projectionFrameId": "odom",
+          "color": "#ffffff",
+          "rectifyImage": true,
+          "pointSize": 1.5
         }
       },
       "layers": {
@@ -234,33 +280,41 @@
       },
       "synchronize": false,
       "imageMode": {},
-      "foxglovePanelTitle": "Drone "
+      "foxglovePanelTitle": "Drone ",
+      "followTf": "drone_link",
+      "fixedFrame": "drone_link"
     }
   },
   "layout": {
+    "direction": "row",
     "first": {
-      "direction": "row",
+      "first": "RawMessages!2xb83md",
+      "second": {
+        "first": "RawMessages!1k39zl2",
+        "second": "Gauge!60ydek",
+        "direction": "column",
+        "splitPercentage": 15.858062857209646
+      },
+      "direction": "column",
+      "splitPercentage": 13.464008657745952
+    },
+    "second": {
       "first": {
-        "first": "RawMessages!2xb83md",
+        "first": "Image!1n7ra51",
         "second": {
-          "first": "RawMessages!1k39zl2",
-          "second": "Gauge!60ydek",
+          "first": "Image!35vp0dp",
+          "second": "RawMessages!375ab9o",
           "direction": "column",
-          "splitPercentage": 17.503690974659342
+          "splitPercentage": 58.43842912903181
         },
         "direction": "column",
-        "splitPercentage": 15.45355951625775
+        "splitPercentage": 28.222633532582858
       },
-      "second": {
-        "first": "Image!1n7ra51",
-        "second": "Image!35vp0dp",
-        "direction": "column"
-      },
-      "splitPercentage": 26.39344262295082
+      "second": "3D!1qilldp",
+      "direction": "row",
+      "splitPercentage": 56.453423120089795
     },
-    "second": "3D!1qilldp",
-    "direction": "row",
-    "splitPercentage": 71.42857142857143
+    "splitPercentage": 18.106617647058822
   },
   "globalVariables": {},
   "playbackConfig": {

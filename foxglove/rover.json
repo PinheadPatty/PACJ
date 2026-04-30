@@ -1,7 +1,27 @@
 {
   "configById": {
+    "RawMessages!vuyc9n": {
+      "defaultExpanded": false,
+      "topicPath": "/coupling_status"
+    },
+    "Publish!1pkn7c0": {
+      "topicName": "/coupling",
+      "datatype": "std_msgs/msg/String",
+      "value": "{\n  \"data\": \"close\"\n}",
+      "buttonText": "Couple",
+      "advancedView": false,
+      "foxglovePanelTitle": "Couple"
+    },
+    "Publish!2l1ibxp": {
+      "topicName": "/coupling",
+      "datatype": "std_msgs/msg/String",
+      "value": "{\n  \"data\": \"open\"\n}",
+      "advancedView": false,
+      "foxglovePanelTitle": "Uncouple",
+      "buttonText": "Uncouple"
+    },
     "Gauge!442sko3": {
-      "path": "",
+      "path": "/rover/battery.percentage",
       "style": "dial",
       "minValue": 0,
       "maxValue": 1,
@@ -12,7 +32,261 @@
         "#ff00ff"
       ],
       "reverse": false,
-      "reverseDirection": false
+      "reverseDirection": false,
+      "foxglovePanelTitle": "Rover Battery"
+    },
+    "Image!frvxhm": {
+      "cameraState": {
+        "distance": 20,
+        "perspective": true,
+        "phi": 60,
+        "target": [
+          0,
+          0,
+          0
+        ],
+        "targetOffset": [
+          0,
+          0,
+          0
+        ],
+        "targetOrientation": [
+          0,
+          0,
+          0,
+          1
+        ],
+        "thetaOffset": 60,
+        "fovy": 45,
+        "near": 0.5,
+        "far": 5000
+      },
+      "followMode": "follow-pose",
+      "scene": {},
+      "transforms": {},
+      "topics": {},
+      "layers": {},
+      "publish": {
+        "type": "point",
+        "poseTopic": "/move_base_simple/goal",
+        "pointTopic": "/clicked_point",
+        "poseEstimateTopic": "/initialpose",
+        "poseEstimateXDeviation": 0.5,
+        "poseEstimateYDeviation": 0.5,
+        "poseEstimateThetaDeviation": 0.26179939
+      },
+      "synchronize": false,
+      "imageMode": {
+        "imageTopic": "/rover/color/image_raw/compressed"
+      },
+      "foxglovePanelTitle": "Rover Camera"
+    },
+    "3D!e2x9rn": {
+      "cameraState": {
+        "perspective": true,
+        "distance": 9.753499582307313,
+        "phi": 61.66089527028128,
+        "thetaOffset": 94.51393581082789,
+        "targetOffset": [
+          1.6414024269502945,
+          -0.05298369614058266,
+          -0.42617699486677874
+        ],
+        "target": [
+          0,
+          0,
+          0
+        ],
+        "targetOrientation": [
+          0,
+          0,
+          0,
+          1
+        ],
+        "fovy": 45,
+        "near": 0.5,
+        "far": 5000
+      },
+      "followMode": "follow-pose",
+      "followTf": "rover_link",
+      "scene": {},
+      "transforms": {},
+      "topics": {
+        "/rover/map": {
+          "visible": false
+        },
+        "/rover/global_path": {
+          "visible": true
+        },
+        "/drone/mapPath": {
+          "visible": false
+        },
+        "/drone/local_path": {
+          "visible": false
+        },
+        "/rover/local_path": {
+          "visible": true
+        },
+        "/rover/mapPath": {
+          "visible": true
+        },
+        "/rover/landmarks": {
+          "visible": true
+        },
+        "/rover/odom_local_map": {
+          "visible": true,
+          "colorField": "rgb",
+          "colorMode": "rgb",
+          "colorMap": "turbo"
+        },
+        "/rover/odom_last_frame": {
+          "visible": true,
+          "colorField": "z",
+          "colorMode": "colormap",
+          "colorMap": "turbo"
+        },
+        "/rover/octomap_occupied_space": {
+          "visible": true,
+          "colorField": "rgb",
+          "colorMode": "rgb",
+          "colorMap": "turbo"
+        },
+        "/rover/octomap_ground": {
+          "visible": false
+        },
+        "/rover/octomap_obstacles": {
+          "visible": false,
+          "colorField": "rgb",
+          "colorMode": "rgb",
+          "colorMap": "turbo"
+        },
+        "/rover/octomap_grid": {
+          "visible": false
+        },
+        "/rover/octomap_global_frontier_space": {
+          "visible": false
+        },
+        "/rover/octomap_empty_space": {
+          "visible": false
+        },
+        "/rover/localization_pose": {
+          "visible": false
+        },
+        "/rover/local_grid_obstacle": {
+          "visible": false
+        },
+        "/rover/local_grid_ground": {
+          "visible": false
+        },
+        "/rover/local_grid_empty": {
+          "visible": false
+        },
+        "/rover/labels": {
+          "visible": false
+        },
+        "/rover/initialpose": {
+          "visible": false
+        },
+        "/rover/grid_prob_map": {
+          "visible": false
+        },
+        "/rover/goal": {
+          "visible": false
+        },
+        "/rover/global_pose": {
+          "visible": false
+        },
+        "/rover/depth/image_raw/compressedDepth": {
+          "visible": false
+        },
+        "/rover/depth/image_raw": {
+          "visible": false,
+          "frameLocked": true,
+          "cameraInfoTopic": "/rover/depth/camera_info",
+          "distance": 1,
+          "planarProjectionFactor": 0,
+          "renderMode": "default",
+          "projectionFrameId": "rover_link",
+          "color": "#ffffff",
+          "rectifyImage": true,
+          "pointSize": 1.5
+        },
+        "/rover/depth/camera_info": {
+          "visible": false
+        },
+        "/rover/decompressed_depth": {
+          "visible": false,
+          "frameLocked": true,
+          "cameraInfoTopic": "/rover/color/camera_info",
+          "distance": 1,
+          "planarProjectionFactor": 0,
+          "renderMode": "default",
+          "projectionFrameId": "rover_link",
+          "color": "#ffffff",
+          "rectifyImage": true,
+          "pointSize": 1.5
+        },
+        "/rover/decompressed_color": {
+          "visible": false,
+          "frameLocked": true,
+          "cameraInfoTopic": "/rover/color/camera_info",
+          "distance": 1,
+          "planarProjectionFactor": 0,
+          "renderMode": "default",
+          "projectionFrameId": "rover_link",
+          "color": "#ffffff",
+          "rectifyImage": true,
+          "pointSize": 1.5
+        },
+        "/rover/cloud_obstacles": {
+          "visible": false
+        },
+        "/rover/cloud_map": {
+          "visible": false
+        },
+        "/rover/cloud_ground": {
+          "visible": false
+        },
+        "/rover/odom_local_scan_map": {
+          "visible": true
+        },
+        "/rover/color/image_raw/compressed": {
+          "visible": false
+        }
+      },
+      "layers": {
+        "grid": {
+          "visible": true,
+          "drawBehind": false,
+          "instanceId": "73e6839f-0356-403b-8402-27d169749288",
+          "layerId": "foxglove.Grid",
+          "size": 10,
+          "divisions": 10,
+          "lineWidth": 1,
+          "color": "#248eff",
+          "position": [
+            0,
+            0,
+            0
+          ],
+          "rotation": [
+            0,
+            0,
+            0
+          ]
+        }
+      },
+      "publish": {
+        "type": "point",
+        "poseTopic": "/move_base_simple/goal",
+        "pointTopic": "/clicked_point",
+        "poseEstimateTopic": "/initialpose",
+        "poseEstimateXDeviation": 0.5,
+        "poseEstimateYDeviation": 0.5,
+        "poseEstimateThetaDeviation": 0.26179939
+      },
+      "synchronize": false,
+      "imageMode": {}
     }
   },
   "globalVariables": {},
@@ -20,5 +294,30 @@
   "playbackConfig": {
     "speed": 1
   },
-  "layout": "Gauge!442sko3"
+  "layout": {
+    "direction": "row",
+    "first": {
+      "first": "RawMessages!vuyc9n",
+      "second": {
+        "first": "Publish!1pkn7c0",
+        "second": {
+          "first": "Publish!2l1ibxp",
+          "second": "Gauge!442sko3",
+          "direction": "column",
+          "splitPercentage": 20.79808841099164
+        },
+        "direction": "column",
+        "splitPercentage": 15.257166696465818
+      },
+      "direction": "column",
+      "splitPercentage": 15.147009739964195
+    },
+    "second": {
+      "direction": "row",
+      "first": "Image!frvxhm",
+      "second": "3D!e2x9rn",
+      "splitPercentage": 76.09138124649074
+    },
+    "splitPercentage": 27.60898282694848
+  }
 }
