@@ -1,5 +1,5 @@
 from launch import LaunchDescription
-from launch.actions import IncludeLaunchDescription
+from launch.actions import IncludeLaunchDescription, GroupAction
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch_ros.actions import Node
 import os
@@ -9,121 +9,76 @@ def generate_launch_description():
     rtabmap_pkg = get_package_share_directory('rtabmap_launch')
     rtabmap_launch_path = os.path.join(rtabmap_pkg, 'launch', 'rtabmap.launch.py')
 
-    # --- YOUR ORIGINAL NODES (restored) ---
-    interactive_setpoint = Node(
+    image_decompressor = Node(
         package='pacj',
-        executable='interactive_setpoint',
-        name='interactive_setpoint',
-        output='screen'
+        executable='decompress',
+        name='image_decompressor',
+        output='screen',
     )
 
-    drone_planner = Node(
-        package='pacj',
-        executable='drone_planner',
-        name='drone_planner',
-        output='screen'
-    )
+    drone_slam = GroupAction([
+        IncludeLaunchDescription(
+            PythonLaunchDescriptionSource(rtabmap_launch_path),
+            launch_arguments={
+                'rgb_topic': '/drone/decompressed_color',
+                'depth_topic': '/drone/decompressed_depth',
+                'camera_info_topic': '/drone/color/camera_info',
+                'namespace': 'drone',
+                'frame_id': 'drone_link',
+                'odom_frame_id': 'drone/odom',
+                'map_frame_id': 'drone/map',
+                'approx_sync': 'true',
+                'approx_sync_max_interval': '0.2',
+                'qos': '1',
+                'use_sim_time': 'false',
+                'args': '--delete_db_on_start --Vis/MaxFeatures 600 --Vis/DepthAsMask false --database_path /tmp/drone_rtabmap.db',
+                'rtabmap_viz': 'false',
+                'Grid/3D': 'true',
+                'publish_tf_odom': 'true',
+            }.items()
+        )
+    ])
 
-    # --- SLAM ---
-    # Ground truth for who subscribes to what: ros2 topic info -v /rover/color/image_raw
-    # (Subscribers must list /rover/rgbd_odometry only — not rqt_graph alone).
-    # rtabmap.launch.py defaults wire imu/gps/tags to GLOBAL names (/imu/data, /gps/fix,
-    # /detections, /user_data_async). With two robots on one DDS domain, both stacks would
-    # subscribe to the same topics — wrong. Point optional sensors at per-robot names; if
-    # nothing publishes there, those inputs are simply unused.
-    drone_slam = IncludeLaunchDescription(
-        PythonLaunchDescriptionSource(rtabmap_launch_path),
-        launch_arguments={
-            'rgb_topic': '/drone/color/image_raw',
-            'depth_topic': '/drone/depth/image_raw',
-            'camera_info_topic': '/drone/color/camera_info',
-            'namespace': 'drone',
-            'imu_topic': '/drone/imu/data',
-            'gps_topic': '/drone/gps/fix',
-            'tag_topic': '/drone/apriltag/detections',
-            'user_data_topic': '/drone/user_data',
-            'user_data_async_topic': '/drone/user_data_async',
-            'fiducial_topic': '/drone/fiducial_transforms',
-            'env_sensor_topic': '/drone/env_sensor',
-            'odom_topic': '/drone/odom',
-            'frame_id': 'drone_link',
-            'odom_frame_id': 'drone/odom',
-            'map_frame_id': 'drone/map',
-            'approx_sync': 'true',
-            'approx_sync_max_interval': '0.2',
-            # Must match rgb/depth_image_transport: enables image_transport republish in rtabmap.launch.py
-            'compressed': 'false',
-            'rgb_image_transport': 'compressed',
-            'depth_image_transport': 'compressedDepth',
-            'qos': '1',
-            'use_sim_time': 'false',
-            'args': '--delete_db_on_start --Vis/MaxFeatures 600 --database_path /tmp/drone_rtabmap.db',
-            'rtabmap_viz': 'false',
-            'Grid/3D': 'true',
-            'publish_tf_odom': 'true',
-        }.items()
-    )
+    rover_slam = GroupAction([
+        IncludeLaunchDescription(
+            PythonLaunchDescriptionSource(rtabmap_launch_path),
+            launch_arguments={
+                'rgb_topic': '/rover/decompressed_color',
+                'depth_topic': '/rover/decompressed_depth',
+                'camera_info_topic': '/rover/color/camera_info',
+                'namespace': 'rover',
+                'frame_id': 'rover_link',
+                'odom_frame_id': 'rover_link',
+                'map_frame_id': 'rover/map',
+                'approx_sync': 'true',
+                'approx_sync_max_interval': '0.2',
+                'qos': '1',
+                'use_sim_time': 'false',
+                'args': '--delete_db_on_start --Vis/MaxFeatures 600 --Vis/DepthAsMask false --database_path /tmp/rover_rtabmap.db',
+                'rtabmap_viz': 'false',
+                'Grid/3D': 'true',
+                'publish_tf_odom': 'true',
+            }.items()
+        )
+    ])
 
-    rover_slam = IncludeLaunchDescription(
-        PythonLaunchDescriptionSource(rtabmap_launch_path),
-        launch_arguments={
-            'rgb_topic': '/rover/color/image_raw',
-            'depth_topic': '/rover/depth/image_raw',
-            'camera_info_topic': '/rover/color/camera_info',
-            'namespace': 'rover',
-            'imu_topic': '/rover/imu/data',
-            'gps_topic': '/rover/gps/fix',
-            'tag_topic': '/rover/apriltag/detections',
-            'user_data_topic': '/rover/user_data',
-            'user_data_async_topic': '/rover/user_data_async',
-            'fiducial_topic': '/rover/fiducial_transforms',
-            'env_sensor_topic': '/rover/env_sensor',
-            'odom_topic': '/rover/odom',
-            'frame_id': 'rover_link',
-            'odom_frame_id': 'rover/odom',
-            'map_frame_id': 'rover/map',
-            'approx_sync': 'true',
-            'approx_sync_max_interval': '0.2',
-            'compressed': 'false',
-            'rgb_image_transport': 'compressed',
-            'depth_image_transport': 'compressedDepth',
-            'qos': '1',
-            'use_sim_time': 'false',
-            'args': '--delete_db_on_start --Vis/MaxFeatures 600 --database_path /tmp/rover_rtabmap.db',
-            'rtabmap_viz': 'false',
-            'Grid/3D': 'true',
-            'publish_tf_odom': 'true',
-        }.items()
-    )
-
-    # --- RVIZ CONFIGS ---
-    pkg_share = get_package_share_directory('pacj')
-
-    drone_rviz_config = os.path.join(pkg_share, 'rviz', 'drone_config.rviz')
-    rover_rviz_config = os.path.join(pkg_share, 'rviz', 'rover_config.rviz')
-
-    # --- TWO RVIZ INSTANCES ---
-    rviz_drone = Node(
-        package='rviz2',
-        executable='rviz2',
-        name='rviz2_drone',
-        arguments=['-d', drone_rviz_config],
-        output='screen'
-    )
-
-    rviz_rover = Node(
-        package='rviz2',
-        executable='rviz2',
-        name='rviz2_rover',
-        arguments=['-d', rover_rviz_config],
-        output='screen'
+    foxglove_bridge = Node(
+        package='foxglove_bridge',
+        executable='foxglove_bridge',
+        name='foxglove_bridge',
+        output='screen',
+        parameters=[{
+            'port': 8765,
+            'address': '0.0.0.0',
+            # Drop old WebSocket data when the browser can't keep up instead of
+            # buffering it indefinitely (keeps the feed live, not historically accurate).
+            'send_buffer_limit': 10000000,  # 10 MB
+        }],
     )
 
     return LaunchDescription([
-        # interactive_setpoint,
-        # drone_planner,
-        # drone_slam,
+        image_decompressor,
+        drone_slam,
         rover_slam,
-        # rviz_drone,
-        rviz_rover
+        foxglove_bridge,
     ])

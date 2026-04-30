@@ -4,6 +4,13 @@ from glob import glob
 
 package_name = 'pacj'
 
+_calibration_dir = 'calibration'
+_calibration_files = (
+    sorted(glob(os.path.join(_calibration_dir, '*')))
+    if os.path.isdir(_calibration_dir)
+    else []
+)
+
 setup(
     name=package_name,
     version='0.0.0',
@@ -15,6 +22,7 @@ setup(
         (os.path.join('share', package_name, 'launch'), glob('launch/*.launch.py')),
         (os.path.join('share', package_name, 'rviz'), glob('rviz/*.rviz')),
         (os.path.join('share', package_name, 'params'), glob('params/*')),
+        (os.path.join('share', package_name, 'calibration'), glob('calibration/*.yaml')),
     ],
     install_requires=['setuptools'],
     zip_safe=True,
@@ -29,12 +37,17 @@ setup(
     },
     entry_points={
         'console_scripts': [
-            'decompressor = pacj.decompress:main',
             'rover_driver = pacj.rover_driver:main',
             'battery = pacj.battery:main',
             'interactive_setpoint = pacj.interactive_setpoint:main',
             'drone_planner = pacj.drone_planner:main',
             'offboard_controller = pacj.offboard_controller:main',
+            'aruco_detector = pacj.aruco_detector_node:main',
+            'aruco_landing_planner = pacj.aruco_landing_planner:main',
+            'drone_status = pacj.drone_status_node:main',
+            'charuco_capture = pacj.charuco_capture_node:main',
+            'charuco_calibrate_from_images = pacj.charuco_calibrate_from_images_node:main',
+            'decompress = pacj.decompress:main',
         ],
     },
 )

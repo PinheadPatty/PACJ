@@ -1,40 +1,42 @@
 #!/usr/bin/env python3
 
 import math
+
 import rclpy
 from rclpy.node import Node
-from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy, DurabilityPolicy
+from rclpy.qos import DurabilityPolicy, HistoryPolicy, QoSProfile, ReliabilityPolicy
 
-from geometry_msgs.msg import Twist, PoseStamped
-from std_msgs.msg import Bool
-from sensor_msgs.msg import Image, CameraInfo
-from px4_msgs.msg import OffboardControlMode, TrajectorySetpoint, VehicleCommand, VehicleStatus, VehicleAttitude, VehicleLocalPosition
-
-import cv2
-from cv_bridge import CvBridge
-import numpy as np
+from geometry_msgs.msg import PoseStamped
+from std_msgs.msg import String
+from px4_msgs.msg import (
+    OffboardControlMode,
+    TrajectorySetpoint,
+    VehicleAttitude,
+    VehicleLocalPosition,
+    VehicleStatus,
+)
 
 
 class OffboardController(Node):
-    """PX4 offboard bridge.
+    """Position-only PX4 offboard bridge.
 
-    Three top-level modes (self.control_mode):
-      VELOCITY  — /cmd_vel → NED velocity setpoints (needs publish_velocity:=true).
-      POSITION  — /cmd_pose → NED position setpoints (needs publish_position:=true).
-      LANDING   — ArUco landing via /start_landing (needs publish_landing:=true).
+    Always publishes PX4 position setpoints with a local-position hold baseline.
 
-    All modes also require publish_setpoints:=true and NAVIGATION_STATE_OFFBOARD.
+    Tracking policy:
+    - While PX4 is in OFFBOARD mode, any message on /drone/cmd_pose immediately
+      engages TRACK_CMD. No separate arming step is required.
+    - Each OFFBOARD edge (enter or exit) returns to HOLD_LOCAL so a stale
+      streamed /drone/cmd_pose cannot resume after mode changes.
+    - cmd_timeout_s: if no /drone/cmd_pose arrives for this many seconds the
+      controller falls back to HOLD_LOCAL. This is the only safety net against
+      a dead planner. Set to 0 to disable.
 
-    Landing sub-states (self.land_state): WAIT_MARKER → ARUCO_DESCENT → READY_TO_COUPLE.
+    Clamping policy:
+    - No position or yaw clamping is applied here. The planner is responsible
+      for commanding safe lookahead targets. This node is intentionally kept
+      as a thin, low-latency bridge so direct emergency overrides on
+      /drone/cmd_pose always take effect immediately.
     """
-
-    MODE_VELOCITY = 'VELOCITY'
-    MODE_POSITION = 'POSITION'
-    MODE_LANDING = 'LANDING'
-
-    LAND_WAIT_MARKER = 'WAIT_MARKER'
-    LAND_ARUCO_DESCENT = 'ARUCO_DESCENT'
-    LAND_READY_TO_COUPLE = 'READY_TO_COUPLE'
 
     def __init__(self):
         super().__init__('offboard_controller')
@@ -43,251 +45,198 @@ class OffboardController(Node):
             reliability=ReliabilityPolicy.BEST_EFFORT,
             durability=DurabilityPolicy.TRANSIENT_LOCAL,
             history=HistoryPolicy.KEEP_LAST,
-            depth=1
+            depth=1,
         )
 
-        # Publishers to PX4
         self.offboard_control_mode_pub = self.create_publisher(
-            OffboardControlMode, '/fmu/in/offboard_control_mode', qos_profile)
+            OffboardControlMode,
+            '/drone/fmu/in/offboard_control_mode',
+            qos_profile,
+        )
         self.trajectory_setpoint_pub = self.create_publisher(
-            TrajectorySetpoint, '/fmu/in/trajectory_setpoint', qos_profile)
-        self.vehicle_command_pub = self.create_publisher(
-            VehicleCommand, '/fmu/in/vehicle_command', qos_profile)
+            TrajectorySetpoint,
+            '/drone/fmu/in/trajectory_setpoint',
+            qos_profile,
+        )
+        self.mode_pub = self.create_publisher(String, '/drone/offboard_controller/mode', 10)
 
-        # Subscribers from PX4
-        self.vehicle_status_sub = self.create_subscription(
-            VehicleStatus, '/fmu/out/vehicle_status', self.vehicle_status_cb, qos_profile)
-        self.vehicle_attitude_sub = self.create_subscription(
-            VehicleAttitude, '/fmu/out/vehicle_attitude', self.vehicle_attitude_cb, qos_profile)
-        self.vehicle_local_pos_sub = self.create_subscription(
-            VehicleLocalPosition, '/fmu/out/vehicle_local_position', self.vehicle_local_pos_cb, qos_profile)
+        self.create_subscription(
+            VehicleAttitude,
+            '/drone/fmu/out/vehicle_attitude',
+            self.vehicle_attitude_cb,
+            qos_profile,
+        )
+        self.create_subscription(
+            VehicleLocalPosition,
+            '/drone/fmu/out/vehicle_local_position',
+            self.vehicle_local_pos_cb,
+            qos_profile,
+        )
+        self.create_subscription(
+            VehicleStatus,
+            '/drone/fmu/out/vehicle_status_v1',
+            self.vehicle_status_cb,
+            qos_profile,
+        )
+        self.create_subscription(PoseStamped, '/drone/cmd_pose', self.cmd_pose_cb, 10)
 
-        # Teleop + landing trigger (no /rover_pose: pilot positions with teleop first)
-        self.cmd_vel_sub = self.create_subscription(Twist, '/cmd_vel', self.cmd_vel_cb, 10)
-        self.cmd_pose_sub = self.create_subscription(PoseStamped, '/cmd_pose', self.cmd_pose_cb, 10)
-        self.start_landing_sub = self.create_subscription(Bool, '/start_landing', self.start_landing_cb, 10)
-        self.landing_success_pub = self.create_publisher(Bool, '/landing_success', 10)
+        self.cmd_timeout_s = float(self.declare_parameter('cmd_timeout_s', 2.0).value)
 
-        # Camera (ArUco) — only processed while MODE_LANDING
-        self.info_sub = self.create_subscription(CameraInfo, '/camera_info', self.camera_info_cb, 10)
-        self.image_sub = self.create_subscription(Image, '/image_raw', self.image_cb, 10)
-
-        self.bridge = CvBridge()
-        self.camera_matrix = None
-        self.dist_coeffs = None
-        self.marker_size = self.declare_parameter('marker_size', 0.046).value
-        self.aruco_dict = cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_4X4_50)
-        self.aruco_params = cv2.aruco.DetectorParameters()
-
-        # Master: publish_setpoints + Offboard before anything reaches PX4.
-        self.publish_setpoints = bool(self.declare_parameter('publish_setpoints', False).value)
-        # Per-mode (default false): must enable the mode you use on top of publish_setpoints.
-        self.publish_velocity = bool(self.declare_parameter('publish_velocity', False).value)
-        self.publish_position = bool(self.declare_parameter('publish_position', False).value)
-        self.publish_landing = bool(self.declare_parameter('publish_landing', False).value)
-
-        # State Variables
-        self.nav_state = VehicleStatus.NAVIGATION_STATE_MAX
-        self.arming_state = VehicleStatus.ARMING_STATE_DISARMED
         self.current_yaw = 0.0
         self.drone_pos = [0.0, 0.0, 0.0]
+        self.mode = 'HOLD_LOCAL'
+        self.last_published_mode = None
+        self.cmd_target = PoseStamped()
+        self.offboard_active = False
+        self.vehicle_status_received = False
+        self.last_cmd_time_s = -1.0
 
-        self.aruco_rel_pos = [0.0, 0.0, 0.0]
-        self.aruco_rel_yaw = 0.0
-        self.aruco_last_seen = self.get_clock().now()
-        self.aruco_visible = False
-
-        self.control_mode = self.MODE_VELOCITY
-        self.current_twist = Twist()
         self.current_pose = PoseStamped()
-
         self.current_pose.pose.position.x = 0.0
         self.current_pose.pose.position.y = 0.0
         self.current_pose.pose.position.z = 2.0
+        self.current_pose.pose.orientation.w = 1.0
 
-        # Snapshot when landing starts (NED position + yaw to hold while seeking marker)
-        self.land_hold_pos = [0.0, 0.0, 0.0]
-        self.land_hold_yaw = 0.0
-        self.land_state = self.LAND_WAIT_MARKER
+        self.timer = self.create_timer(0.05, self.timer_cb)  # 20 Hz
 
-        self.timer_period = 0.05  # 20 Hz
-        self.timer = self.create_timer(self.timer_period, self.timer_cb)
-
-        self.get_logger().info("Offboard Controller Initialized.")
-        self.get_logger().warn(
-            "Gates: publish_setpoints + Offboard; and publish_velocity / publish_position / "
-            "publish_landing for each mode."
+        self._publish_mode_if_changed()
+        self.get_logger().info(
+            'Offboard controller ready. In OFFBOARD mode, stream /drone/cmd_pose to track.'
         )
 
-    def _may_command_px4(self):
-        return (
-            self.publish_setpoints
-            and self.nav_state == VehicleStatus.NAVIGATION_STATE_OFFBOARD
+    # ------------------------------------------------------------------
+    # State helpers
+    # ------------------------------------------------------------------
+
+    def _publish_mode_if_changed(self):
+        if self.mode == self.last_published_mode:
+            return
+        msg = String()
+        msg.data = self.mode
+        self.mode_pub.publish(msg)
+        self.last_published_mode = self.mode
+
+    def _enter_hold_local(self, reason: str = ''):
+        previously_tracking = self.mode == 'TRACK_CMD'
+        self.mode = 'HOLD_LOCAL'
+        self._latch_current_hold_target()
+        self.last_published_mode = None  # force republish even on HOLD->HOLD
+        if previously_tracking or reason:
+            self.get_logger().info(f'HOLD_LOCAL{": " + reason if reason else ""}')
+
+    def _flush_on_offboard_edge(self):
+        self._enter_hold_local(reason='offboard edge')
+
+    def _can_track(self):
+        return self.mode == 'TRACK_CMD' and self.offboard_active
+
+    # ------------------------------------------------------------------
+    # Pose helpers
+    # ------------------------------------------------------------------
+
+    def _set_current_pose_from_ned(self, x_north, y_east, z_down, yaw_ned):
+        self.current_pose.pose.position.x = float(y_east)
+        self.current_pose.pose.position.y = float(x_north)
+        self.current_pose.pose.position.z = float(-z_down)
+
+        ros_yaw = -float(yaw_ned)
+        self.current_pose.pose.orientation.x = 0.0
+        self.current_pose.pose.orientation.y = 0.0
+        self.current_pose.pose.orientation.z = math.sin(ros_yaw / 2.0)
+        self.current_pose.pose.orientation.w = math.cos(ros_yaw / 2.0)
+
+    def _latch_current_hold_target(self):
+        self._set_current_pose_from_ned(
+            self.drone_pos[0],
+            self.drone_pos[1],
+            self.drone_pos[2],
+            self.current_yaw,
         )
 
-    def _may_velocity(self):
-        return self._may_command_px4() and self.publish_velocity
-
-    def _may_position(self):
-        return self._may_command_px4() and self.publish_position
-
-    def _may_landing(self):
-        return self._may_command_px4() and self.publish_landing
+    # ------------------------------------------------------------------
+    # Subscriptions
+    # ------------------------------------------------------------------
 
     def vehicle_attitude_cb(self, msg):
         q = msg.q
-        self.current_yaw = math.atan2(2.0 * (q[0] * q[3] + q[1] * q[2]), 1.0 - 2.0 * (q[2] * q[2] + q[3] * q[3]))
+        self.current_yaw = math.atan2(
+            2.0 * (q[0] * q[3] + q[1] * q[2]),
+            1.0 - 2.0 * (q[2] * q[2] + q[3] * q[3]),
+        )
 
     def vehicle_local_pos_cb(self, msg):
         self.drone_pos = [msg.x, msg.y, msg.z]
 
     def vehicle_status_cb(self, msg):
-        self.nav_state = msg.nav_state
-        self.arming_state = msg.arming_state
+        was_offboard = self.offboard_active
+        self.offboard_active = (msg.nav_state == VehicleStatus.NAVIGATION_STATE_OFFBOARD)
+        self.vehicle_status_received = True
 
-    def cmd_vel_cb(self, msg):
-        if self.control_mode == self.MODE_LANDING:
-            return
-        if not self._may_velocity():
-            return
-        self.control_mode = self.MODE_VELOCITY
-        self.current_twist = msg
+        if (not was_offboard) and self.offboard_active:
+            self._flush_on_offboard_edge()
+            self.get_logger().info(
+                'PX4 entered OFFBOARD: stream /drone/cmd_pose to track.'
+            )
+
+        if was_offboard and (not self.offboard_active):
+            had_track = self.mode == 'TRACK_CMD'
+            self._flush_on_offboard_edge()
+            if had_track:
+                self.get_logger().info('PX4 exited OFFBOARD while tracking.')
 
     def cmd_pose_cb(self, msg):
-        if self.control_mode == self.MODE_LANDING:
-            return
-        if not self._may_position():
-            return
-        self.control_mode = self.MODE_POSITION
-        self.current_pose = msg
-
-    def start_landing_cb(self, msg):
-        if msg.data and self.control_mode != self.MODE_LANDING:
-            if not self._may_landing():
-                self.get_logger().warn(
-                    "Landing ignored: need publish_setpoints, Offboard, publish_landing:=true."
-                )
-                return
-            self.land_hold_pos = [
-                float(self.drone_pos[0]),
-                float(self.drone_pos[1]),
-                float(self.drone_pos[2]),
-            ]
-            self.land_hold_yaw = float(self.current_yaw)
-            self.control_mode = self.MODE_LANDING
-            self.land_state = self.LAND_WAIT_MARKER
-            self.get_logger().info(
-                "Landing mode: holding current NED pose and seeking ArUco "
-                "(teleop yourself over the deck before starting)."
-            )
-        elif not msg.data and self.control_mode == self.MODE_LANDING:
-            self.control_mode = self.MODE_VELOCITY
-            self.get_logger().info("Landing mode deactivated.")
-
-    def camera_info_cb(self, msg):
-        if self.camera_matrix is None:
-            self.camera_matrix = np.array(msg.k).reshape((3, 3))
-            self.dist_coeffs = np.array(msg.d)
-
-    def image_cb(self, msg):
-        if (
-            self.control_mode != self.MODE_LANDING
-            or not self.publish_landing
-            or self.camera_matrix is None
-        ):
+        """Accept the pose directly with no clamping. The planner owns lookahead limiting."""
+        if not self.offboard_active:
             return
 
-        try:
-            cv_image = self.bridge.imgmsg_to_cv2(msg, "bgr8")
-        except Exception:
-            return
+        self.cmd_target = msg
+        self.mode = 'TRACK_CMD'
+        self.last_cmd_time_s = float(self.get_clock().now().nanoseconds) * 1e-9
 
-        gray = cv2.cvtColor(cv_image, cv2.COLOR_BGR2GRAY)
-        corners, ids, _ = cv2.aruco.detectMarkers(gray, self.aruco_dict, parameters=self.aruco_params)
-
-        if ids is not None and len(ids) > 0:
-            marker_points = np.array([
-                [-self.marker_size / 2, self.marker_size / 2, 0],
-                [self.marker_size / 2, self.marker_size / 2, 0],
-                [self.marker_size / 2, -self.marker_size / 2, 0],
-                [-self.marker_size / 2, -self.marker_size / 2, 0]
-            ], dtype=np.float32)
-
-            _, rvec, tvec = cv2.solvePnP(marker_points, corners[0][0], self.camera_matrix, self.dist_coeffs)
-            tvec = tvec.flatten()
-
-            # Camera -> NED body
-            # Camera X = East, Y = -North, Z = Down
-            self.aruco_rel_pos[0] = -tvec[1]
-            self.aruco_rel_pos[1] = tvec[0]
-            self.aruco_rel_pos[2] = tvec[2]
-
-            rmat, _ = cv2.Rodrigues(rvec)
-            R_ned_c = np.array([
-                [0, -1,  0],
-                [1,  0,  0],
-                [0,  0,  1]
-            ])
-            R_ned_m = R_ned_c @ rmat
-            self.aruco_rel_yaw = math.atan2(R_ned_m[1, 0], R_ned_m[0, 0])
-
-            self.aruco_last_seen = self.get_clock().now()
-            self.aruco_visible = True
-        else:
-            if (self.get_clock().now() - self.aruco_last_seen).nanoseconds > 1e9:  # 1s timeout
-                self.aruco_visible = False
+    # ------------------------------------------------------------------
+    # Main loop
+    # ------------------------------------------------------------------
 
     def timer_cb(self):
-        if not self._may_command_px4():
-            return
+        if self.mode == 'TRACK_CMD' and self.cmd_timeout_s > 0.0 and self.last_cmd_time_s > 0.0:
+            now_s = float(self.get_clock().now().nanoseconds) * 1e-9
+            if (now_s - self.last_cmd_time_s) > self.cmd_timeout_s:
+                self._enter_hold_local(
+                    reason=f'no /drone/cmd_pose for {self.cmd_timeout_s:.1f}s (planner dead?)'
+                )
 
-        if self.control_mode == self.MODE_VELOCITY and not self.publish_velocity:
-            return
-        if self.control_mode == self.MODE_POSITION and not self.publish_position:
-            return
-        if self.control_mode == self.MODE_LANDING and not self.publish_landing:
-            return
+        if self.mode == 'TRACK_CMD' and self.vehicle_status_received and (not self.offboard_active):
+            self._enter_hold_local(reason='PX4 not in OFFBOARD')
 
+        if self._can_track():
+            self.current_pose = self.cmd_target
+        else:
+            self._latch_current_hold_target()
+
+        self._publish_mode_if_changed()
         self.publish_offboard_control_mode()
+        self.publish_trajectory_setpoint()
 
+    # ------------------------------------------------------------------
+    # PX4 publishers
+    # ------------------------------------------------------------------
+
+    def publish_offboard_control_mode(self):
+        msg = OffboardControlMode()
+        msg.position = True
+        msg.velocity = False
+        msg.acceleration = False
+        msg.attitude = False
+        msg.body_rate = False
+        msg.timestamp = int(self.get_clock().now().nanoseconds / 1000)
+        self.offboard_control_mode_pub.publish(msg)
+
+    def publish_trajectory_setpoint(self):
         msg = TrajectorySetpoint()
 
-        if self.control_mode == self.MODE_VELOCITY:
-            self._fill_velocity_setpoint(msg)
-        elif self.control_mode == self.MODE_POSITION:
-            self._fill_position_setpoint(msg)
-        elif self.control_mode == self.MODE_LANDING:
-            self._fill_landing_setpoint(msg)
-
-        msg.timestamp = int(self.get_clock().now().nanoseconds / 1000)
-        self.trajectory_setpoint_pub.publish(msg)
-
-    def _fill_velocity_setpoint(self, msg):
-        xy_multiplier = 5.0
-        z_multiplier = 1.0
-
-        body_forward = float(self.current_twist.linear.x) * xy_multiplier
-        body_right = -float(self.current_twist.linear.y) * xy_multiplier
-        body_down = -float(self.current_twist.linear.z) * z_multiplier
-
-        cos_yaw = math.cos(self.current_yaw)
-        sin_yaw = math.sin(self.current_yaw)
-
-        msg.velocity[0] = body_forward * cos_yaw - body_right * sin_yaw
-        msg.velocity[1] = body_forward * sin_yaw + body_right * cos_yaw
-        msg.velocity[2] = body_down
-        msg.yawspeed = -float(self.current_twist.angular.z)
-
-        msg.position = [float('nan'), float('nan'), float('nan')]
-        msg.acceleration = [float('nan'), float('nan'), float('nan')]
-        msg.jerk = [float('nan'), float('nan'), float('nan')]
-        msg.yaw = float('nan')
-
-    def _fill_position_setpoint(self, msg):
         ros_x = float(self.current_pose.pose.position.x)
         ros_y = float(self.current_pose.pose.position.y)
         ros_z = float(self.current_pose.pose.position.z)
-
         msg.position[0] = ros_y
         msg.position[1] = ros_x
         msg.position[2] = -ros_z
@@ -296,7 +245,6 @@ class OffboardController(Node):
         q_y = self.current_pose.pose.orientation.y
         q_z = self.current_pose.pose.orientation.z
         q_w = self.current_pose.pose.orientation.w
-
         siny_cosp = 2.0 * (q_w * q_z + q_x * q_y)
         cosy_cosp = 1.0 - 2.0 * (q_y * q_y + q_z * q_z)
         target_yaw = math.atan2(siny_cosp, cosy_cosp)
@@ -306,108 +254,8 @@ class OffboardController(Node):
         msg.acceleration = [float('nan'), float('nan'), float('nan')]
         msg.jerk = [float('nan'), float('nan'), float('nan')]
         msg.yawspeed = float('nan')
-
-    def _fill_landing_setpoint(self, msg):
-        msg.velocity = [float('nan'), float('nan'), float('nan')]
-        msg.acceleration = [float('nan'), float('nan'), float('nan')]
-        msg.jerk = [float('nan'), float('nan'), float('nan')]
-        msg.yawspeed = float('nan')
-
-        if self.land_state == self.LAND_WAIT_MARKER:
-            msg.position = [
-                self.land_hold_pos[0],
-                self.land_hold_pos[1],
-                self.land_hold_pos[2],
-            ]
-            msg.yaw = self.land_hold_yaw
-            if self.aruco_visible:
-                self.land_state = self.LAND_ARUCO_DESCENT
-                self.get_logger().info("ArUco acquired — descending.")
-
-        elif self.land_state == self.LAND_ARUCO_DESCENT:
-            if not self.aruco_visible:
-                if 0 < self.aruco_rel_pos[2] < 0.15:
-                    self.land_state = self.LAND_READY_TO_COUPLE
-                    self.get_logger().info("READY_TO_COUPLE (blind): marker lost but close; continuing down.")
-                    msg.position = [
-                        self.drone_pos[0],
-                        self.drone_pos[1],
-                        self.drone_pos[2] + 0.01,
-                    ]
-                    msg.yaw = self.current_yaw
-                else:
-                    self.land_state = self.LAND_WAIT_MARKER
-                    self.land_hold_pos = [
-                        float(self.drone_pos[0]),
-                        float(self.drone_pos[1]),
-                        float(self.drone_pos[2]),
-                    ]
-                    self.land_hold_yaw = float(self.current_yaw)
-                    self.get_logger().warn("Marker lost — hold here and re-acquire.")
-                    msg.position = [self.land_hold_pos[0], self.land_hold_pos[1], self.land_hold_pos[2]]
-                    msg.yaw = self.land_hold_yaw
-            else:
-                target_x = self.drone_pos[0] + self.aruco_rel_pos[0]
-                target_y = self.drone_pos[1] + self.aruco_rel_pos[1]
-                target_z = self.drone_pos[2] + 0.01
-                target_yaw = self.current_yaw + self.aruco_rel_yaw
-
-                msg.position = [target_x, target_y, target_z]
-                msg.yaw = target_yaw
-
-                if self.aruco_rel_pos[2] < 0.05:
-                    self.land_state = self.LAND_READY_TO_COUPLE
-                    self.get_logger().info("READY_TO_COUPLE: <5 cm from marker; final descent.")
-
-        elif self.land_state == self.LAND_READY_TO_COUPLE:
-            if not self.aruco_visible:
-                msg.position = [
-                    self.drone_pos[0],
-                    self.drone_pos[1],
-                    self.drone_pos[2] + 0.01,
-                ]
-                msg.yaw = self.current_yaw
-            else:
-                target_x = self.drone_pos[0] + self.aruco_rel_pos[0]
-                target_y = self.drone_pos[1] + self.aruco_rel_pos[1]
-                target_z = self.drone_pos[2] + 0.01
-                target_yaw = self.current_yaw + self.aruco_rel_yaw
-
-                msg.position = [target_x, target_y, target_z]
-                msg.yaw = target_yaw
-
-            success_msg = Bool()
-            success_msg.data = True
-            self.landing_success_pub.publish(success_msg)
-
-    def publish_offboard_control_mode(self):
-        msg = OffboardControlMode()
-
-        if self.control_mode == self.MODE_POSITION or self.control_mode == self.MODE_LANDING:
-            msg.position = True
-            msg.velocity = False
-        else:
-            msg.position = False
-            msg.velocity = True
-
-        msg.acceleration = False
-        msg.attitude = False
-        msg.body_rate = False
         msg.timestamp = int(self.get_clock().now().nanoseconds / 1000)
-        self.offboard_control_mode_pub.publish(msg)
-
-    def publish_vehicle_command(self, command, param1=0.0, param2=0.0):
-        msg = VehicleCommand()
-        msg.param1 = float(param1)
-        msg.param2 = float(param2)
-        msg.command = command
-        msg.target_system = 1
-        msg.target_component = 1
-        msg.source_system = 1
-        msg.source_component = 191
-        msg.from_external = True
-        msg.timestamp = int(self.get_clock().now().nanoseconds / 1000)
-        self.vehicle_command_pub.publish(msg)
+        self.trajectory_setpoint_pub.publish(msg)
 
 
 def main(args=None):

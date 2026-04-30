@@ -2,7 +2,7 @@
 import rclpy
 from rclpy.node import Node
 from sensor_msgs.msg import CompressedImage, Image
-from rclpy.qos import qos_profile_sensor_data
+from rclpy.qos import qos_profile_sensor_data, QoSProfile, ReliabilityPolicy, DurabilityPolicy, HistoryPolicy
 from cv_bridge import CvBridge
 import cv2
 import numpy as np
@@ -11,6 +11,12 @@ class ImageDecompressor(Node):
     def __init__(self):
         super().__init__('image_decompressor')
         self.bridge = CvBridge()
+        reliable_qos = QoSProfile(
+            reliability=ReliabilityPolicy.RELIABLE,
+            durability=DurabilityPolicy.VOLATILE,
+            history=HistoryPolicy.KEEP_LAST,
+            depth=10,
+        )
 
         # Drone Subscriptions & Publishers
         self.drone_color_subscription = self.create_subscription(
@@ -24,8 +30,8 @@ class ImageDecompressor(Node):
             self.drone_depth_listener_callback, 
             qos_profile=qos_profile_sensor_data)        
         
-        self.drone_color_publisher = self.create_publisher(Image, '/drone/decompressed_color', qos_profile=qos_profile_sensor_data)
-        self.drone_depth_publisher = self.create_publisher(Image, '/drone/decompressed_depth', qos_profile=qos_profile_sensor_data)
+        self.drone_color_publisher = self.create_publisher(Image, '/drone/decompressed_color', qos_profile=reliable_qos)
+        self.drone_depth_publisher = self.create_publisher(Image, '/drone/decompressed_depth', qos_profile=reliable_qos)
 
         # Rover Subscriptions & Publishers
         self.rover_color_subscription = self.create_subscription(
@@ -39,8 +45,8 @@ class ImageDecompressor(Node):
             self.rover_depth_listener_callback, 
             qos_profile=qos_profile_sensor_data)        
         
-        self.rover_color_publisher = self.create_publisher(Image, '/rover/decompressed_color', qos_profile=qos_profile_sensor_data)
-        self.rover_depth_publisher = self.create_publisher(Image, '/rover/decompressed_depth', qos_profile=qos_profile_sensor_data)
+        self.rover_color_publisher = self.create_publisher(Image, '/rover/decompressed_color', qos_profile=reliable_qos)
+        self.rover_depth_publisher = self.create_publisher(Image, '/rover/decompressed_depth', qos_profile=reliable_qos)
 
     def drone_color_listener_callback(self, msg):
         self.decompress_color(msg, self.drone_color_publisher)

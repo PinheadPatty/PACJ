@@ -2,6 +2,9 @@
 /pacj_ws/build
 /pacj_ws/install
 /pacj_ws/log
+/build
+/install
+/log
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
@@ -215,3 +218,7 @@ __marimo__/
 
 # PDF
 *.pdf
+
+*.png
+*.jpg
+*.jpeg
