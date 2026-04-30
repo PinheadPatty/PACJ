@@ -108,7 +108,7 @@ def generate_launch_description():
     return LaunchDescription([
         uxrce_agent,
         drone_status,
-        offboard_controller,
+        # offboard_controller,
         downward_camera_node,
         aruco_detector_node,
         drone_camera,
