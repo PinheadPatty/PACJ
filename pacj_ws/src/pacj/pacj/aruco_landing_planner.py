@@ -1,11 +1,9 @@
 #!/usr/bin/env python3
 """
-Simple ArUco landing helper: align XY + yaw slowly, then ramp Z toward a latched goal.
+ArUco landing helper: one slow ramp toward the vision goal (X, Y, Z, yaw together).
 
-Publishes geometry_msgs/PoseStamped on /cmd_pose using the same NED convention as
-offboard_controller._set_current_pose_from_ned.
-
-Run when ready (OFFBOARD + tracking armed on offboard_controller):
+Goal updates each fresh /drone/aruco/relative_pose (FMU + body XY, marker range for Z, ArUco yaw).
+Publishes /drone/cmd_pose in the same frame as offboard_controller._set_current_pose_from_ned.
 
   ros2 run pacj aruco_landing_planner
 """
@@ -90,32 +88,22 @@ def body_err_to_ned_horizontal(fwd: float, left: float, yaw_ned: float) -> Tuple
 
 
 class ArucoLandingPlanner(Node):
-    """
-    1) While marker visible: goal = FMU /cmd_pose + rotated body (fwd,left) + yaw from ArUco quat.
-    2) Ramp smoothed cmd toward goal: slow XY, yaw rate limited; Z only when horizontal error small.
-    3) Z goal latched on first good detection: start cmd z + descend_delta_z_cmd (negative = lower).
-    """
-
     def __init__(self):
         super().__init__('aruco_landing_planner')
 
-        self.declare_parameter('horizontal_speed_mps', 0.08)
-        self.declare_parameter('vertical_speed_mps', 0.04)
-        self.declare_parameter('yaw_rate_rad_s', 0.10)
-        self.declare_parameter('xy_align_tol_m', 0.06)
+        # Defaults: very slow approach (tune per vehicle)
+        self.declare_parameter('horizontal_speed_mps', 0.025)
+        self.declare_parameter('vertical_speed_mps', 0.015)
+        self.declare_parameter('yaw_rate_rad_s', 0.04)
         self.declare_parameter('control_period_s', 0.05)
-        self.declare_parameter('descend_delta_z_cmd', -0.08)
-        self.declare_parameter('marker_timeout_s', 2.0)
-        self.declare_parameter('marker_freshness_s', 0.5)
+        # No separate "freshness" window: last relative pose is trusted until this age without a new message.
+        self.declare_parameter('marker_timeout_s', 5.0)
 
         self._h_speed = float(self.get_parameter('horizontal_speed_mps').value)
         self._v_speed = float(self.get_parameter('vertical_speed_mps').value)
         self._y_rate = float(self.get_parameter('yaw_rate_rad_s').value)
-        self._xy_tol = float(self.get_parameter('xy_align_tol_m').value)
         self._period = float(self.get_parameter('control_period_s').value)
-        self._descend_delta_z = float(self.get_parameter('descend_delta_z_cmd').value)
         self._marker_timeout_s = float(self.get_parameter('marker_timeout_s').value)
-        self._marker_fresh_s = float(self.get_parameter('marker_freshness_s').value)
 
         qos = QoSProfile(
             reliability=ReliabilityPolicy.BEST_EFFORT,
@@ -135,7 +123,6 @@ class ArucoLandingPlanner(Node):
         self._rel_rx: Optional[rclpy.time.Time] = None
 
         self._smoothed: Optional[PoseStamped] = None
-        self._z_goal_cmd: Optional[float] = None
         self._frozen_target: Optional[PoseStamped] = None
 
         self.create_subscription(
@@ -152,11 +139,11 @@ class ArucoLandingPlanner(Node):
         )
         self.create_subscription(PoseStamped, '/drone/aruco/relative_pose', self._cb_rel, 10)
 
-        self._cmd_pub = self.create_publisher(PoseStamped, '/cmd_pose', 10)
+        self._cmd_pub = self.create_publisher(PoseStamped, '/drone/cmd_pose', 10)
         self.create_timer(self._period, self._tick)
 
         self.get_logger().info(
-            'aruco_landing_planner (simple): slow XY/yaw then Z; /cmd_pose matches offboard frame.'
+            'aruco_landing_planner: slow ramp X/Y/Z/yaw together -> /drone/cmd_pose'
         )
 
     def _cb_lp(self, msg: VehicleLocalPosition):
@@ -181,15 +168,21 @@ class ArucoLandingPlanner(Node):
     def _fmu_cmd(self) -> PoseStamped:
         return ned_to_cmd_pose(self._x_n, self._y_e, self._z_d, self._yaw_ned)
 
-    def _rel_fresh(self, now: rclpy.time.Time) -> bool:
+    def _seconds_since_rel(self, now: rclpy.time.Time) -> float:
+        if self._rel_rx is None:
+            return float('inf')
+        return (now - self._rel_rx).nanoseconds * 1e-9
+
+    def _rel_trust(self, now: rclpy.time.Time) -> bool:
+        """True if we still trust the last relative pose (same window as marker lost)."""
         if self._rel is None or self._rel_rx is None:
             return False
-        return (now - self._rel_rx).nanoseconds * 1e-9 <= self._marker_fresh_s
+        return self._seconds_since_rel(now) <= self._marker_timeout_s
 
     def _marker_lost(self, now: rclpy.time.Time) -> bool:
         if self._rel_rx is None:
             return False
-        return (now - self._rel_rx).nanoseconds * 1e-9 > self._marker_timeout_s
+        return self._seconds_since_rel(now) > self._marker_timeout_s
 
     def _build_goal(self) -> Optional[PoseStamped]:
         if self._rel is None or not self._fmu_ok():
@@ -197,6 +190,7 @@ class ArucoLandingPlanner(Node):
         base = self._fmu_cmd()
         fwd = float(self._rel.pose.position.x)
         left = float(self._rel.pose.position.y)
+        dist = float(self._rel.pose.position.z)
         yaw_rel = planar_yaw_from_quat(self._rel.pose.orientation)
 
         dn, de = body_err_to_ned_horizontal(fwd, left, self._yaw_ned)
@@ -204,16 +198,14 @@ class ArucoLandingPlanner(Node):
         g.header.frame_id = 'map'
         g.pose.position.x = base.pose.position.x + de
         g.pose.position.y = base.pose.position.y + dn
+        # Detector z = range along optical axis (m); command toward that depth directly (no hover offset).
+        g.pose.position.z = base.pose.position.z - dist
+
         ros_yaw_base = cmd_pose_planar_yaw(base)
         g.pose.orientation = yaw_to_quat(angle_wrap_pi(ros_yaw_base + yaw_rel))
-
-        if self._z_goal_cmd is None:
-            self._z_goal_cmd = base.pose.position.z + self._descend_delta_z
-            self.get_logger().info(f'Z goal latched: cmd_z -> {self._z_goal_cmd:.3f} m')
-        g.pose.position.z = float(self._z_goal_cmd)
         return g
 
-    def _step_toward(self, cur: PoseStamped, goal: PoseStamped, dt: float, allow_z: bool) -> PoseStamped:
+    def _step_toward(self, cur: PoseStamped, goal: PoseStamped, dt: float) -> PoseStamped:
         out = PoseStamped()
         out.header.frame_id = 'map'
         out.header.stamp = self.get_clock().now().to_msg()
@@ -228,12 +220,9 @@ class ArucoLandingPlanner(Node):
         sy = math.copysign(min(abs(dy), self._h_speed * dt), dy)
         out.pose.position.y = cy + sy
 
-        if allow_z:
-            zdiff = gz - cz
-            zstep = math.copysign(min(abs(zdiff), self._v_speed * dt), zdiff)
-            out.pose.position.z = cz + zstep
-        else:
-            out.pose.position.z = cz
+        zdiff = gz - cz
+        zstep = math.copysign(min(abs(zdiff), self._v_speed * dt), zdiff)
+        out.pose.position.z = cz + zstep
 
         y_cur = cmd_pose_planar_yaw(cur)
         y_goal = cmd_pose_planar_yaw(goal)
@@ -241,10 +230,6 @@ class ArucoLandingPlanner(Node):
         ystep = math.copysign(min(abs(ydiff), self._y_rate * dt), ydiff)
         out.pose.orientation = yaw_to_quat(y_cur + ystep)
         return out
-
-    def _horizontal_err_fmu_to_goal(self, goal: PoseStamped) -> float:
-        f = self._fmu_cmd()
-        return math.hypot(goal.pose.position.x - f.pose.position.x, goal.pose.position.y - f.pose.position.y)
 
     def _tick(self):
         now = self.get_clock().now()
@@ -257,11 +242,13 @@ class ArucoLandingPlanner(Node):
             self._smoothed = self._fmu_cmd()
 
         if self._marker_lost(now) and self._frozen_target is not None:
-            self.get_logger().warn('Marker timeout; clearing goal. Re-acquire marker to re-latch Z.')
+            self.get_logger().warn(
+                'Marker timeout; clearing goal.',
+                throttle_duration_sec=5.0,
+            )
             self._frozen_target = None
-            self._z_goal_cmd = None
 
-        if self._rel_fresh(now) and self._rel is not None:
+        if self._rel_trust(now) and self._fmu_ok():
             g = self._build_goal()
             if g is not None:
                 self._frozen_target = g
@@ -272,8 +259,7 @@ class ArucoLandingPlanner(Node):
             self._publish(self._smoothed)
             return
 
-        allow_z = self._horizontal_err_fmu_to_goal(goal) < self._xy_tol
-        self._smoothed = self._step_toward(self._smoothed, goal, dt, allow_z)
+        self._smoothed = self._step_toward(self._smoothed, goal, dt)
         self._publish(self._smoothed)
 
     def _publish(self, p: PoseStamped):
