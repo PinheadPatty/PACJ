@@ -22,9 +22,3 @@ PACJ is a ROS 2 workspace for autonomous rover + drone workflows, including:
 If GitHub Pages is enabled for this repo, view it at:
 
 - [https://pinheadpatty.github.io/PACJ/](https://pinheadpatty.github.io/PACJ/)
-
-If that URL does not load yet:
-
-# Includes
-Orbbec ROS2 SDK
-https://www.orbbec.com/docs/g330-ros-2-wrapper-user-manual/#installation-instructions
