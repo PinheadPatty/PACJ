@@ -527,14 +527,14 @@
       var PACJ_DRIVE_FOLDER_URL = '';
       var PACJ_DRIVE_DEMOS = [
         {
-          title: 'Full Interactive Demo',
-          description: 'Primary full-length interactive demonstration (add Drive link).',
-          driveUrlOrId: 'https://drive.google.com/file/d/1tAszh0TqYsBCnvNooODXaKd2TqNgaxRy/view?usp=sharing',
+          title: 'Full Demo w/ Foxglove Synced Video',
+          description: 'Full mission with synchronized Foxglove visualization.',
+          driveUrlOrId: 'https://drive.google.com/file/d/1SpM5sNoWcZvglhhjZI4P_yz58L3CTOPh/view?usp=sharing',
         },
         {
-          title: 'Full Demo w/ Foxglove Synced Video',
-          description: 'Full mission with synchronized Foxglove visualization (add Drive link).',
-          driveUrlOrId: 'https://drive.google.com/file/d/1SpM5sNoWcZvglhhjZI4P_yz58L3CTOPh/view?usp=sharing',
+          title: 'Full Interactive Demo',
+          description: 'Full-length interactive demonstration.',
+          driveUrlOrId: 'https://drive.google.com/file/d/1tAszh0TqYsBCnvNooODXaKd2TqNgaxRy/view?usp=sharing',
         },
         {
           title: 'Coupling Method CAD',
@@ -629,7 +629,7 @@
       if (!mount) return;
 
       var rows = [];
-      var featuredIndex = -1;
+      var featuredCount = 0;
       for (var i = 0; i < PACJ_DRIVE_DEMOS.length; i++) {
         var item = PACJ_DRIVE_DEMOS[i];
         var id = parseDriveFileId(item.driveUrlOrId);
@@ -639,7 +639,7 @@
       }
 
       if (rows.length) {
-        featuredIndex = 0;
+        featuredCount = Math.min(2, rows.length);
       }
 
       if (PACJ_DRIVE_FOLDER_URL && String(PACJ_DRIVE_FOLDER_URL).trim()) {
@@ -710,9 +710,12 @@
         return article;
       }
 
-      if (featuredIndex >= 0) {
-        var featured = rows.splice(featuredIndex, 1)[0];
-        mount.appendChild(buildVideoCard(featured, 'video-featured'));
+      if (featuredCount > 0) {
+        for (var k = 0; k < featuredCount; k++) {
+          var featured = rows.shift();
+          if (!featured) break;
+          mount.appendChild(buildVideoCard(featured, 'video-featured'));
+        }
       }
 
       if (rows.length) {
